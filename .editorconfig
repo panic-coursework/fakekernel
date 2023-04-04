@@ -1,0 +1,22 @@
+root = true
+
+[*]
+insert_final_newline = true
+charset = utf-8
+end_of_line = lf
+
+[*.c, *.h]
+tab_width = 2
+indent_size = 2
+indent_style = space
+
+[*.s, *.S]
+tab_width = 8
+indent_style = tab
+
+[*.dump]
+tab_width = 8
+
+[Makefile]
+tab_width = 2
+indent_style = tab
