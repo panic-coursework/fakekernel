@@ -2,6 +2,8 @@
 
 #include <stdbool.h>
 
+#include "memlayout.h"
+#include "mm.h"
 #include "type.h"
 
 #define MM_BARE 0
@@ -25,8 +27,16 @@ typedef union {
     u32 vpn1: 9;
     u32 vpn2: 9;
   };
+  struct __attribute__((packed)) {
+    u32 : 12;
+    u32 vpn : 27;
+  };
   u64 value;
 } sv39_va;
+
+static inline u64 pa_from_ppn (u64 ppn) {
+  return ppn << PAGE_INDEX_BITS;
+}
 
 typedef union {
   struct __attribute__((packed)) {
@@ -34,6 +44,10 @@ typedef union {
     u32 ppn0: 9;
     u32 ppn1: 9;
     u32 ppn2: 26;
+  };
+  struct __attribute__((packed)) {
+    u32 : 12;
+    u64 ppn : 44;
   };
   u64 value;
 } sv39_pa;
@@ -56,5 +70,20 @@ typedef union {
     u32 ppn2: 26;
     u32 reserved: 10;
   };
+  struct __attribute__((packed)) {
+    u32 : 10;
+    u64 ppn: 44;
+    u32 : 10;
+  };
   u64 value;
 } sv39_pte;
+
+static inline bool pte_is_leaf (u32 flags) {
+  return (flags & (PTE_READ | PTE_WRITE | PTE_EXEC));
+}
+static inline bool pte_invalid_or_leaf (sv39_pte pte) {
+  return !(pte.flags & PTE_VALID) || pte_is_leaf(pte.flags);
+}
+static inline page_table_t subtable_from_pte (sv39_pte pte) {
+  return (page_table_t) pa_from_ppn(pte.ppn);
+}

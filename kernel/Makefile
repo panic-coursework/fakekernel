@@ -39,6 +39,6 @@ kernel.dump: kernel
 
 all: kernel.dump
 clean:
-	rm -f kernel kernel.dump $(OBJS) *.dump
+	rm -f kernel kernel.dump $(OBJS) *.dump *.d
 
 -include *.d

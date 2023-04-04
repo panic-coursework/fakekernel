@@ -2,15 +2,13 @@
 
 	.section	._early.stack
 	.align	12
-stack:
 	.zero	0x1000
+stack:
 
 	.section	._start
 	.globl	_start
 _start:
 	la	sp, stack
-	li	t0, 0x1000
-	add	sp, sp, t0
 	call	main
 
 
