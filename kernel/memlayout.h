@@ -52,10 +52,10 @@
 // from physical address 0x80000000 to PHYSTOP.
 #define KERNBASE 0x80000000L
 #define PHYSTOP (KERNBASE + 128*1024*1024)
-
-#define KERN_ATP (KERNBASE + 1 * 1024 * 1024)
-#define TIMER_INTERVAL 1000000
-#define TIMER_SCRATCH (KERN_ATP + 0x1000)
+#define PAGE_INDEX_BITS 12
+#define PAGE_SIZE (1 << PAGE_INDEX_BITS)
+#define MAX_ORDER 10
+#define SKIP_ORDER 8 // 256 * 4K = 1M
 
 // map the trampoline page to the highest address,
 // in both user and kernel space.

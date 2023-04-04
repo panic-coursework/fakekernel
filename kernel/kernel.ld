@@ -31,5 +31,10 @@ SECTIONS {
     *(.bss .bss.*)
   }
 
+  .early_data_structures : {
+    . = ALIGN(16);
+    *(._early.*)
+  }
+
   PROVIDE(end = .);
 }

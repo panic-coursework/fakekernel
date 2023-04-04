@@ -13,6 +13,7 @@
 #include <stdint.h>
 
 #include "memlayout.h"
+#include "panic.h"
 
 // the UART control registers are memory-mapped
 // at address UART0. this macro returns the
@@ -48,11 +49,7 @@ char uart_tx_buf[UART_TX_BUF_SIZE];
 uint64_t uart_tx_w; // write next to uart_tx_buf[uart_tx_w % UART_TX_BUF_SIZE]
 uint64_t uart_tx_r; // read next from uart_tx_buf[uart_tx_r % UART_TX_BUF_SIZE]
 
-extern volatile int panicked;
-
-void uartstart();
-
-void uartinit (void) {
+void uart_init (void) {
   // disable interrupts.
   WriteReg(IER, 0x00);
 
@@ -77,9 +74,8 @@ void uartinit (void) {
 }
 
 void uartputc (int c) {
-  if(panicked){
-    for(;;)
-      ;
+  if (panicked) {
+    while (true) continue;
   }
 
   // wait for Transmit Holding Empty to be set in LSR.

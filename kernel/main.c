@@ -1,31 +1,34 @@
 #include <stdbool.h>
 
+#include "memlayout.h"
 #include "mm.h"
 #include "printf.h"
+#include "start.h"
 #include "uart.h"
 
-char stack[0x1000];
-bool panicked = false;
-
-extern void mret();
-extern void idle();
-
 void timer () {
-  printk("timer\n");
+#ifdef TIMER_DEBUG
+  u64 time = *(u64 *)CLINT_MTIME;
+  printk("timer at %10lu\n", time);
+#endif
 }
 void timerret () {
+#ifdef TIMER_DEBUG
   printk("timer return\n");
+#endif
 }
 
 void main () {
-  uartinit();
+  uart_init();
 
-  printk("Hello %s %s %s!\n", "Brave", "New", "World");
+  printk("Hello %s %s %s!\n", "Brand", "New", "World");
 
   establish_identical_mapping();
-  printk("Identical mapping established, entering S-mode\n");
+  printk("Identity mapping established, entering S-mode\n");
   mret();
-  printk("Entered S-mode.\n");
 
+  mm_init();
+
+  printk("Idle.\n");
   idle();
 }

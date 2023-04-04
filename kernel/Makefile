@@ -6,7 +6,7 @@ AS = $(CROSS_COMPILE)as
 LD = $(CROSS_COMPILE)ld
 OBJDUMP = $(CROSS_COMPILE)objdump
 
-CFLAGS = -Wall -O -fno-omit-frame-pointer -ggdb -gdwarf-2
+CFLAGS = -Wall -O2 -fno-omit-frame-pointer -ggdb -gdwarf-2
 CFLAGS += -MD
 CFLAGS += -mcmodel=medany
 CFLAGS += -ffreestanding -fno-common -nostdlib -mno-relax
@@ -31,7 +31,7 @@ qemugdb: kernel.dump
 	$(QEMU) $(QEMUOPTS) -s -S
 
 kernel.dump: kernel
-	$(OBJDUMP) -d $< > $@
+	$(OBJDUMP) -D $< > $@
 %.dump: %.o
 	$(OBJDUMP) -d $< > $@
 
@@ -40,3 +40,5 @@ kernel.dump: kernel
 all: kernel.dump
 clean:
 	rm -f kernel kernel.dump $(OBJS) *.dump
+
+-include *.d
