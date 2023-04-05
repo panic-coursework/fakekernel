@@ -4,6 +4,8 @@
 #include "mm.h"
 #include "type.h"
 
+void kernelvec ();
+
 struct trapframe {
   u64 registers[32];
   u64 kernel_satp;

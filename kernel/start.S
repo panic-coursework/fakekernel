@@ -12,9 +12,9 @@ _start:
 	call	main
 
 
-#define TIMER_INTERVAL 10000000000
+#define TIMER_INTERVAL 1000000
 
-	.text
+	.section	.text.mret
 	.align	2
 	.globl	mret
 mret:
@@ -39,14 +39,13 @@ mret:
 
 	la	t0, timervec
 	csrw	mtvec, t0
-	csrw	stvec, t0
 
 	li	t0, 0xa0
 	csrw	mie, t0
 
 	# return to S-mode and enable interrupts (for timer)
 	csrr	t0, mstatus
-	li	t1, 0x80a
+	li	t1, 0x808
 	or	t0, t0, t1
 	csrw	mstatus, t0
 
@@ -55,7 +54,7 @@ mret:
 	mret
 
 
-	.text
+	.section	.text.timervec
 	.align	2
 	.globl 	timervec
 timervec:
@@ -66,22 +65,19 @@ timervec:
 	li	t0, CLINT_MTIMECMP(0)
 	sd	t1, 0(t0)
 
-	call	timer
-	li	t0, 1
+	li	t0, 2
+	csrw	sip, t0
 	mret
 
 
-	.text
+	.section	.text.idle
 	.align	2
 	.globl	idle
 idle:
-	li	t0, 0
 	wfi
-	beqz	t0, idle
-	call	timerret
 	j	idle
 
-	.text
+	.section	.text.spin
 	.align	2
 	.globl	spin
 spin:

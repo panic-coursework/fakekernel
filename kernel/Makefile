@@ -24,6 +24,7 @@ CPUS = 1
 QEMU = qemu-system-riscv64
 QEMUOPTS = -machine virt -bios none -kernel kernel -m 128M -smp $(CPUS) -nographic
 QEMUOPTS += -global virtio-mmio.force-legacy=false
+QEMUOPTS += -device loader,file=../user/test,force-raw=on,addr=0x800f0000
 
 qemu: kernel.dump
 	$(QEMU) $(QEMUOPTS)

@@ -7,7 +7,7 @@
 #include "printf.h"
 #include "riscv.h"
 #include "type.h"
-#include "trampoline.h"
+#include "trap.h"
 
 __asm__(
   ".section ._early.kernel_page_table\n\t"
@@ -106,8 +106,7 @@ struct page alloc_pages (u32 order) {
   };
 }
 
-static void map_common_pages (page_table_t table) {
-  // map trampoline pages
+static void map_trampoline_pages (page_table_t table) {
   set_page(table, TRAMPOLINE, (u64) &trampoline,
            PTE_VALID | PTE_READ | PTE_EXEC | PTE_GLOBAL);
   set_page(table, TRAPFRAME, (u64) &trapframe,
@@ -120,9 +119,9 @@ void mm_init () {
   printk("trap frame      va %p pa %p\n", TRAPFRAME, &trapframe);
   page_allocator_init();
 
-  // protect from kernelNULL dereferencing
+  // protect from kernel NULL dereferencing
   set_page(kernel_page_table, NULL, NULL, 0);
-  map_common_pages(kernel_page_table);
+  map_trampoline_pages(kernel_page_table);
   __asm__("sfence.vma x0, x0");
 
   u64 satp;
@@ -345,7 +344,7 @@ page_table_t create_page_table () {
   for (int i = 0; i < 1 << 9; ++i) {
     table->entries[i].value = 0;
   }
-  map_common_pages(table);
+  map_trampoline_pages(table);
   return table;
 }
 
