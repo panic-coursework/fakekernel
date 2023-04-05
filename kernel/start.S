@@ -2,7 +2,7 @@
 
 	.section	._early.stack
 	.align	12
-	.zero	0x1000
+	.zero	PAGE_SIZE
 stack:
 
 	.section	._start
@@ -12,7 +12,7 @@ _start:
 	call	main
 
 
-#define TIMER_INTERVAL 1000000
+#define TIMER_INTERVAL 10000000000
 
 	.text
 	.align	2

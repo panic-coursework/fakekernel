@@ -1,9 +1,11 @@
 #include <stdbool.h>
 
+#include "irq.h"
 #include "memlayout.h"
 #include "mm.h"
 #include "printf.h"
 #include "start.h"
+#include "trampoline.h"
 #include "uart.h"
 
 void timer () {
@@ -28,6 +30,7 @@ void main () {
   mret();
 
   mm_init();
+  irq_init();
 
   printk("Idle.\n");
   idle();

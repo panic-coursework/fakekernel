@@ -20,7 +20,6 @@ void dump_csr_s () {
   dump("stval");
   dump("sip");
   dump("satp");
-  dump("scontext");
 }
 
 void dump_csr_m () {

@@ -33,7 +33,7 @@ qemugdb: kernel.dump
 kernel.dump: kernel
 	$(OBJDUMP) -D $< > $@
 %.dump: %.o
-	$(OBJDUMP) -d $< > $@
+	$(OBJDUMP) -D $< > $@
 
 .PHONY: all clean
 

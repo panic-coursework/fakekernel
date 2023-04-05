@@ -5,15 +5,9 @@
 #include "mmdefs.h"
 #include "panic.h"
 #include "printf.h"
+#include "riscv.h"
 #include "type.h"
-
-static inline void set_satp (satp value) {
-  __asm__(
-    "csrw satp, %0\n\t"
-    "sfence.vma"
-    : : "r" (value.value)
-  );
-}
+#include "trampoline.h"
 
 __asm__(
   ".section ._early.kernel_page_table\n\t"
@@ -40,7 +34,13 @@ static void populate_identical_mapping (page_table_t table) {
 void establish_identical_mapping () {
   printk("populating page table at %p\n", kernel_page_table);
   populate_identical_mapping(kernel_page_table);
-  switch_to_page_table(kernel_page_table, 0);
+  u64 satp = satp_from_table(kernel_page_table).value;
+  __asm__(
+    "sfence.vma x0, x0\n\t"
+    "csrw satp, %0\n\t"
+    "sfence.vma x0, x0"
+    : : "r" (satp)
+  );
 }
 
 static void *buddy_pages[MAX_ORDER];
@@ -106,11 +106,28 @@ struct page alloc_pages (u32 order) {
   };
 }
 
+static void map_common_pages (page_table_t table) {
+  // map trampoline pages
+  set_page(table, TRAMPOLINE, (u64) &trampoline,
+           PTE_VALID | PTE_READ | PTE_EXEC | PTE_GLOBAL);
+  set_page(table, TRAPFRAME, (u64) &trapframe,
+           PTE_VALID | PTE_READ | PTE_WRITE | PTE_GLOBAL);
+}
+
 void mm_init () {
   printk("Initializing memory management.\n");
+  printk("trampoline page va %p pa %p\n", TRAMPOLINE, &trampoline);
+  printk("trap frame      va %p pa %p\n", TRAPFRAME, &trapframe);
   page_allocator_init();
-  // protect from dereferencing NULL in kernel
+
+  // protect from kernelNULL dereferencing
   set_page(kernel_page_table, NULL, NULL, 0);
+  map_common_pages(kernel_page_table);
+  __asm__("sfence.vma x0, x0");
+
+  u64 satp;
+  csrr("satp", satp);
+  trapframe.kernel_satp = satp;
 }
 
 void free_pages (struct page page) {
@@ -261,13 +278,13 @@ int set_page (page_table_t table, u64 va, u64 pa, u32 flags) {
   }
 
   page_table_t subtable;
-  sv39_pte *pte1 = ensure_page_2m(table, va);
+  sv39_va subtable_va = sv_va;
+  subtable_va.vpn0 = 0;
+  sv39_pte *pte1 = ensure_page_2m(table, subtable_va.value);
   if (pte1 == NULL) return -ENOMEM;
   if (pte_invalid_or_leaf(*pte1)) {
     subtable = expand_superpage(table, *pte1, 0);
     if (subtable == NULL) return -ENOMEM;
-    sv39_va subtable_va = sv_va;
-    subtable_va.vpn0 = 0;
     set_page_2m(table, subtable_va.value, (u64) subtable, PTE_VALID);
   } else {
     subtable = subtable_from_pte(*pte1);
@@ -325,8 +342,10 @@ int unset_page_1g (page_table_t table, u64 va) {
 page_table_t create_page_table () {
   page_table_t table = alloc_pages(0).address;
   if (table == NULL) return NULL;
-  populate_identical_mapping(table);
-  set_page(table, NULL, NULL, 0);
+  for (int i = 0; i < 1 << 9; ++i) {
+    table->entries[i].value = 0;
+  }
+  map_common_pages(table);
   return table;
 }
 
@@ -348,15 +367,4 @@ static void do_destroy_page_table (page_table_t table, int depth) {
 
 void destroy_page_table (page_table_t table) {
   do_destroy_page_table(table, 2);
-}
-
-void switch_to_page_table (page_table_t table, u32 asid) {
-  if (((u64) table & (PAGE_SIZE - 1)) != 0) {
-    panic("misaligned page table");
-  }
-  set_satp((satp) {
-    .ppn = (u64) table >> PAGE_INDEX_BITS,
-    .asid = asid,
-    .mode = MM_SV39,
-  });
 }

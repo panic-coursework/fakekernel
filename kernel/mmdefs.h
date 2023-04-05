@@ -4,6 +4,7 @@
 
 #include "memlayout.h"
 #include "mm.h"
+#include "panic.h"
 #include "type.h"
 
 #define MM_BARE 0
@@ -86,4 +87,15 @@ static inline bool pte_invalid_or_leaf (sv39_pte pte) {
 }
 static inline page_table_t subtable_from_pte (sv39_pte pte) {
   return (page_table_t) pa_from_ppn(pte.ppn);
+}
+static inline satp satp_from_table (page_table_t table) {
+  sv39_pa pa = { .value = (u64) table };
+  if (pa.off != 0) {
+    panic("misaligned page table");
+  }
+  return (satp) {
+    .mode = MM_SV39,
+    .asid = 0,
+    .ppn = pa.ppn,
+  };
 }

@@ -57,9 +57,11 @@
 #define MAX_ORDER 10
 #define SKIP_ORDER 8 // 256 * 4K = 1M
 
+#define MAXVA (1L << (9 + 9 + 9 + 12 - 1))
+
 // map the trampoline page to the highest address,
 // in both user and kernel space.
-#define TRAMPOLINE (MAXVA - PGSIZE)
+#define TRAMPOLINE (MAXVA - PAGE_SIZE)
 
 // map kernel stacks beneath the trampoline,
 // each surrounded by invalid guard pages.
@@ -74,4 +76,4 @@
 //   ...
 //   TRAPFRAME (p->trapframe, used by the trampoline)
 //   TRAMPOLINE (the same page as in the kernel)
-#define TRAPFRAME (TRAMPOLINE - PGSIZE)
+#define TRAPFRAME (TRAMPOLINE - PAGE_SIZE)
