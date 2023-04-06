@@ -6,11 +6,12 @@
 #include "panic.h"
 #include "printf.h"
 #include "riscv.h"
+#include "sched.h"
 #include "trap.h"
 #include "type.h"
 #include "uart.h"
 
-static int handle_interrupt () {
+static int handle_interrupt (struct cpu *regs, enum task_mode mode) {
   struct cause scause = read_scause();
   if (!scause.interrupt) return 1;
 
@@ -26,20 +27,40 @@ static int handle_interrupt () {
   }
 
   if (scause.code == CAUSE_SSI) {
-#ifdef DEBUG_TIMER
-    printk("timer interrupt\n");
-#endif
     struct interrupt_bitmap sip = read_sip();
     sip.ssi = false;
     write_sip(sip);
-    return 0;
+
+#ifdef DEBUG_TIMER
+    printk("timer interrupt\n");
+#endif
+    if (mode == MODE_SUPERVISOR) {
+      current_task->kernel_frame = *regs;
+    } else if (mode == MODE_USER) {
+      current_task->user_frame = *regs;
+    } else {
+      panic("handle_interrupt: unknown mode");
+    }
+    current_task->mode = mode;
+    schedule_next();
+
+    panic("unreachable");
   }
 
   return 1;
 }
 
-void kernel_trap () {
-  if (handle_interrupt() == 0) return;
+struct cpu *kernel_trap (struct cpu *regs) {
+  struct status sstatus = read_sstatus();
+  if (!sstatus.spp) {
+    dump_csr_s();
+    panic("kernel_trap: called from user mode");
+  }
+
+  current_task->kernel_frame = *regs;
+  csrr("sepc", current_task->kernel_frame.pc);
+
+  if (handle_interrupt(regs, MODE_SUPERVISOR) == 0) return regs;
   dump_csr_s();
   panic("unable to handle kernel interrupt");
 }
@@ -48,15 +69,25 @@ void kernel_trap () {
 static page_table_t user_table;
 
 __attribute__((noreturn)) void user_trap () {
-  if (handle_interrupt() == 0) {
+  struct status sstatus = read_sstatus();
+  if (sstatus.spp) {
+    dump_csr_s();
+    panic("user_trap: called from kernel mode");
+  }
+
+  csrw("stvec", (u64) kernelvec);
+
+  if (handle_interrupt(&trapframe.task, MODE_USER) == 0) {
     return_to_user(user_table);
   }
-  csrw("stvec", (u64) kernelvec);
-  dump_csr_s();
+
   struct cause scause = read_scause();
-  if (scause.interrupt == false && scause.code == 8) {
-    printk("%d\n", trapframe.registers[10]);
+  if (!scause.interrupt) {
+    current_task->user_frame = trapframe.task;
+    klongjmp(&current_task->kernel_frame);
   }
+
+  dump_csr_s();
   panic("unable to handle user interrupt");
 }
 
@@ -73,9 +104,6 @@ void irq_init () {
   *(u32 *)(PLIC + UART0_IRQ * 4) = 1;
   *(u32 *)PLIC_SENABLE(0) = (1 << UART0_IRQ);
   *(u32 *)PLIC_SPRIORITY(0) = 0;
-
-  printk("Enabling interrupts.\n");
-  enable_interrupts();
 }
 
 
@@ -95,4 +123,22 @@ __attribute__((noreturn)) void return_to_user (page_table_t table) {
   __attribute__((noreturn)) void (*trampoline_kernel_to_user)(satp) =
     (void *) ((u64)_kernel_to_user - (u64)&trampoline + TRAMPOLINE);
   trampoline_kernel_to_user(satp_from_table(table));
+}
+
+
+static inline void print_cpu_reg (struct cpu *cpu, int reg, const char *name) {
+  printk("%s\t%p\n", name, cpu->registers[reg]);
+}
+
+void dump_cpu (struct cpu *cpu) {
+  printk("pc\t%p\n", cpu->pc);
+  print_cpu_reg(cpu, REG_A0, "a0");
+  print_cpu_reg(cpu, REG_A1, "a1");
+  print_cpu_reg(cpu, REG_A2, "a2");
+  print_cpu_reg(cpu, REG_A3, "a3");
+  print_cpu_reg(cpu, REG_A4, "a4");
+  print_cpu_reg(cpu, REG_A5, "a5");
+  print_cpu_reg(cpu, REG_A6, "a6");
+  print_cpu_reg(cpu, REG_SP, "sp");
+  print_cpu_reg(cpu, REG_RA, "ra");
 }

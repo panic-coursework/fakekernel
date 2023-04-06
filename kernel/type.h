@@ -16,3 +16,4 @@ typedef uint64_t u64;
 _Static_assert(sizeof(i64) == 8, "Size of i64 is not 8");
 
 typedef u64 size_t;
+typedef u64 pid_t;

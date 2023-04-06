@@ -4,14 +4,20 @@
 #include "mm.h"
 #include "type.h"
 
-void kernelvec ();
+struct cpu {
+  u64 registers[32];
+  u64 pc;
+};
+
+__attribute__((noreturn)) void kernelvec ();
+int ksetjmp (struct cpu *cpu);
+__attribute__((noreturn)) void klongjmp (struct cpu *cpu);
 
 struct trapframe {
-  u64 registers[32];
-  u64 kernel_satp;
+  struct cpu task;
   u64 kernel_sp;
+  u64 kernel_satp;
   u64 user_trap;
-  u64 sepc;
 };
 _Static_assert(sizeof(struct trapframe) < PAGE_SIZE, "trapframe too large");
 

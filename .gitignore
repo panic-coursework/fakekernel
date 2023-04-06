@@ -4,3 +4,6 @@
 *.o
 
 *.dump
+
+replay.bin
+*.qcow2

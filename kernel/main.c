@@ -6,10 +6,11 @@
 #include "mm.h"
 #include "printf.h"
 #include "start.h"
+#include "sched.h"
 #include "trap.h"
 #include "uart.h"
 
-void main () {
+__attribute__((noreturn)) void main () {
   uart_init();
 
   printk("Hello %s %s %s!\n", "Brand", "New", "World");
@@ -20,11 +21,14 @@ void main () {
 
   mm_init();
   irq_init();
+  sched_init();
 
   elf program = (elf) 0x800f0000L;
-  trapframe.sepc = program->e_entry;
-  return_to_user(load_elf(program));
+  struct task *task = create_task(NULL, load_elf(program));
+  task->user_frame.pc = program->e_entry;
 
-  printk("Idle.\n");
-  idle();
+  task = create_task(NULL, load_elf(program));
+  task->user_frame.pc = program->e_entry;
+
+  schedule();
 }

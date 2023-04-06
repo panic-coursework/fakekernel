@@ -33,7 +33,7 @@ page_table_t load_elf (elf program) {
         // TODO
         panic("out of memory");
       }
-#ifndef DEBUG_ELF
+#ifdef DEBUG_ELF
       printk("set_page: %p %p %b\n", addr, page, flags);
 #endif
       int err = set_page(table, addr.value, (u64) page, flags);

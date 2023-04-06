@@ -54,10 +54,20 @@ mret:
 	mret
 
 
+	.bss
+timerscratch:
+	.zero	16
+
 	.section	.text.timervec
 	.align	2
 	.globl 	timervec
 timervec:
+	csrw	mscratch, t0
+	la	t0, timerscratch
+	sd	t1, 8(t0)
+	csrr	t1, mscratch
+	sd	t1, 0(t0)
+
 	li	t0, CLINT_MTIME
 	ld	t0, 0(t0)
 	li	t1, TIMER_INTERVAL
@@ -67,15 +77,12 @@ timervec:
 
 	li	t0, 2
 	csrw	sip, t0
+
+	la	t0, timerscratch
+	ld	t1, 8(t0)
+	ld	t0, 0(t0)
 	mret
 
-
-	.section	.text.idle
-	.align	2
-	.globl	idle
-idle:
-	wfi
-	j	idle
 
 	.section	.text.spin
 	.align	2

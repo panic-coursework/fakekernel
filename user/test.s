@@ -1,14 +1,11 @@
 	.text
 	.globl	_start
 _start:
-	li	t0, 0
-	li	t1, 100
-	li	t2, 0
-.Lloop:
-	bgt	t0, t1, .Lend
-	add	t2, t2, t0
-	addi	t0, t0, 1
-	j	.Lloop
-.Lend:
-	mv	a0, t2
+	li	a7, 2
 	ecall
+	addi	s0, a0, '0'
+.Lloop:
+	mv	a0, s0
+	li	a7, 1
+	ecall
+	j	.Lloop
