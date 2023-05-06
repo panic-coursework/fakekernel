@@ -64,7 +64,7 @@ struct cpu *kernel_trap (struct cpu *regs) {
 
   if (current_task != NULL) {
     current_task->kernel_frame = *regs;
-    csrr("sepc", current_task->kernel_frame.pc);
+    current_task->kernel_frame.pc = csrr("sepc");
   }
 
   if (handle_interrupt(regs, MODE_SUPERVISOR) == 0) {

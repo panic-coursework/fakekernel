@@ -12,6 +12,7 @@
 #include "riscv.h"
 #include "syscall.h"
 #include "trap.h"
+#include "vm.h"
 
 static pid_t next_task_id = 1;
 
@@ -45,9 +46,6 @@ static void yield_to_user (struct task *task) {
 }
 
 static void task_entry (struct task *task) {
-  for (int i = 0; i < 32; ++i) {
-    task->user_frame.registers[i] = 0;
-  }
   while (true) {
     yield_to_user(task);
     struct cause scause = read_scause();
@@ -55,6 +53,31 @@ static void task_entry (struct task *task) {
       task->user_frame.pc += 4;
       task->user_frame.registers[REG_A0] = syscall(task);
     } else {
+      if (scause.code == 13 || scause.code == 15) {
+        u64 stval = csrr("stval");
+        // stack autoexpand
+        struct vm_area *area = vm_find_stack(&task->vm_areas, csrr("stval"));
+        if (area != NULL) {
+          u64 va_start = stval & ~(PAGE_SIZE - 1);
+          while (area->va > va_start) {
+            void *page = alloc_pages(0).address;
+            if (!page) {
+              // TODO
+              panic("stack autoexpand: out of memory");
+            }
+            if (vm_area_add_page(area, page)) {
+              panic("stack autoexpand: vm_area_add_page");
+            }
+            area->va -= PAGE_SIZE;
+            ++area->n_pages;
+            u32 flags = pte_flags_from_vm_flags(area->flags);
+            if (set_page(task->page_table, area->va, (u64) page, flags)) {
+              panic("stack autoexpand: set_page");
+            }
+          }
+          continue;
+        }
+      }
       printk("pid %d fault!\n", task->pid);
       dump_csr_s();
       break;
@@ -63,7 +86,7 @@ static void task_entry (struct task *task) {
   destroy_task(task);
 }
 
-struct task *create_task (struct task *parent, page_table_t page_table) {
+struct task *create_task (struct task *parent) {
   struct task *task = kmalloc(sizeof(struct task));
   if (task == NULL) return NULL;
   struct list_node *node = list_node_create(task);
@@ -81,7 +104,8 @@ struct task *create_task (struct task *parent, page_table_t page_table) {
   task->sched = node;
   task->pid = next_task_id++;
   task->parent = parent;
-  task->page_table = page_table;
+  list_init(&task->vm_areas);
+  task->page_table = create_page_table();
   task->mode = MODE_SUPERVISOR;
   task->kernel_frame.registers[REG_SP] = (u64) stack + PAGE_SIZE;
   task->kernel_frame.registers[REG_A0] = (u64) task;
@@ -97,9 +121,9 @@ void destroy_task (struct task *task) {
     panic("attempting to kill init");
   }
 
-  struct list_node *entry = task->sched;
-  list_remove(&tasks, entry);
-  kfree(entry);
+  vm_decref_all(&task->vm_areas);
+  list_remove(task->sched);
+  kfree(task->sched);
   kfree(task);
 }
 

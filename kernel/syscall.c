@@ -3,7 +3,10 @@
 #include "errno.h"
 #include "printf.h"
 #include "riscv.h"
+#include "sched.h"
+#include "trap.h"
 #include "uart.h"
+#include "vm.h"
 
 u64 syscall (struct task *task) {
   u64 id = task->user_frame.registers[REG_A7];
@@ -23,6 +26,16 @@ u64 syscall (struct task *task) {
 
   case SYS_getpid:
     return task->pid;
+
+  case SYS_yield:
+    if (ksetjmp(&current_task->kernel_frame)) {
+      return 0;
+    }
+    schedule_next();
+
+  case 114514:
+    vm_dump(&current_task->vm_areas);
+    return 0;
 
   default:
     return -ENOSYS;

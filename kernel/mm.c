@@ -124,8 +124,7 @@ void mm_init () {
   map_trampoline_pages(kernel_page_table);
   __asm__("sfence.vma x0, x0");
 
-  u64 satp;
-  csrr("satp", satp);
+  u64 satp = csrr("satp");
   trapframe.kernel_satp = satp;
 }
 

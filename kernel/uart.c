@@ -142,11 +142,11 @@ int uartgetc (void) {
   }
 }
 
-int getchar () {
+u8 getchar () {
   while (uart_in_tx_r == uart_in_tx_w) {
     wait(&wait_in);
   }
-  int c = uart_in_tx_buf[uart_in_tx_r % UART_TX_BUF_SIZE];
+  u8 c = uart_in_tx_buf[uart_in_tx_r % UART_TX_BUF_SIZE];
   ++uart_in_tx_r;
   return c;
 }

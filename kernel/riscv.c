@@ -2,11 +2,7 @@
 
 #include "printf.h"
 
-#define dump(x) do {       \
-  u64 v;                   \
-  csrr(x, v);              \
-  printk("%p " x "\n", v); \
-} while (false)
+#define dump(x) printk("%p " x "\n", csrr(x))
 
 void dump_csr_s () {
   dump("sstatus");

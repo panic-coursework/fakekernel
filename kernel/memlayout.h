@@ -58,6 +58,7 @@
 #define SKIP_ORDER 8 // 256 * 4K = 1M
 
 #define MAXVA (1L << (9 + 9 + 9 + 12 - 1))
+#define STACK 0x3f00000000
 
 // map the trampoline page to the highest address,
 // in both user and kernel space.

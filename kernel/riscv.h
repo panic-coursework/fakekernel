@@ -69,11 +69,15 @@ struct cause {
   };
 };
 
-#define csrr(name, var) \
-  __asm__ volatile (              \
-    "csrr %0, " name    \
-    : "=r" (var)        \
-  )
+#define csrr(name)        \
+  ({                      \
+    u64 _csr_value;       \
+    __asm__ volatile (    \
+      "csrr %0, " name    \
+      : "=r" (_csr_value) \
+    );                    \
+    _csr_value;           \
+  })
 
 #define csrw(name, var) \
   __asm__(              \
@@ -82,9 +86,7 @@ struct cause {
   )
 
 static inline struct status read_sstatus () {
-  struct status s;
-  csrr("sstatus", s.value);
-  return s;
+  return (struct status) { .value = csrr("sstatus") };
 };
 
 static inline void write_sstatus (struct status status) {
@@ -93,9 +95,7 @@ static inline void write_sstatus (struct status status) {
 
 
 static inline struct interrupt_bitmap read_sie () {
-  struct interrupt_bitmap sie;
-  csrr("sie", sie.value);
-  return sie;
+  return (struct interrupt_bitmap) { .value = csrr("sie") };
 }
 
 static inline void write_sie (struct interrupt_bitmap sie) {
@@ -103,9 +103,7 @@ static inline void write_sie (struct interrupt_bitmap sie) {
 }
 
 static inline struct interrupt_bitmap read_sip () {
-  struct interrupt_bitmap sip;
-  csrr("sip", sip.value);
-  return sip;
+  return (struct interrupt_bitmap) { .value = csrr("sip") };
 }
 
 static inline void write_sip (struct interrupt_bitmap sip) {
@@ -127,9 +125,7 @@ static inline void enable_interrupts () {
 #define CAUSE_MEI 11
 
 static inline struct cause read_scause () {
-  struct cause scause;
-  csrr("scause", scause.value);
-  return scause;
+  return (struct cause) { .value = csrr("scause") };
 }
 
 void dump_csr_s ();

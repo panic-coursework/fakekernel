@@ -26,11 +26,13 @@ __attribute__((noreturn)) void main () { // NOLINT
   sched_init();
 
   elf program = (elf) 0x800f0000L;
-  struct task *task = create_task(NULL, load_elf(program));
+  struct task *task = create_task(NULL);
+  load_elf(task, program);
   task->user_frame.pc = program->e_entry;
 
-  task = create_task(NULL, load_elf(program));
-  task->user_frame.pc = program->e_entry;
+  // task = create_task(NULL);
+  // load_elf(task, program);
+  // task->user_frame.pc = program->e_entry;
 
   kernel_initialized = true;
 

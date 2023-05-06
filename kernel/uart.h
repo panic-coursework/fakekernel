@@ -1,8 +1,10 @@
 #pragma once
 
+#include "type.h"
+
 void uart_init ();
 void uartputc (int c);
 void uartstart ();
 int uartgetc ();
-int getchar ();
+u8 getchar ();
 void uartintr ();
