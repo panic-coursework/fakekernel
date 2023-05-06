@@ -15,7 +15,7 @@ u64 syscall (struct task *task) {
   // u64 a5 = task->user_frame.registers[REG_A5];
   switch (id) {
   case SYS_getchar:
-    return uartgetc();
+    return getchar();
 
   case SYS_putchar:
     putchar(a0);

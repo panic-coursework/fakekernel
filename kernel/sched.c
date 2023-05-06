@@ -4,6 +4,7 @@
 
 #include "errno.h"
 #include "irq.h"
+#include "list.h"
 #include "memlayout.h"
 #include "mm.h"
 #include "panic.h"
@@ -14,19 +15,26 @@
 
 static pid_t next_task_id = 1;
 
-struct task_list {
-  struct task *task;
-  struct task_list *prev;
-  struct task_list *next;
-};
-static struct task_list *next_task;
-static struct task_list *last_task;
+static struct list tasks;
+static struct list_node *current_task_node;
 struct task *current_task;
+
+static void *schedule_stack;
+
+__attribute__((noreturn)) static void do_schedule ();
 
 void sched_init () {
   printk("Initializing scheduler.\n");
-  next_task = last_task = NULL;
+  list_init(&tasks);
+  __asm__ volatile ("mv %0, sp" : "=r" (schedule_stack));
+
+  current_task_node = NULL;
   current_task = NULL;
+}
+
+__attribute__((noreturn)) void schedule () {
+  __asm__ volatile ("mv sp, %0" : : "r" (schedule_stack));
+  do_schedule();
 }
 
 static void yield_to_user (struct task *task) {
@@ -58,7 +66,7 @@ static void task_entry (struct task *task) {
 struct task *create_task (struct task *parent, page_table_t page_table) {
   struct task *task = kmalloc(sizeof(struct task));
   if (task == NULL) return NULL;
-  struct task_list *node = kmalloc(sizeof(struct task_list));
+  struct list_node *node = list_node_create(task);
   if (node == NULL) {
     kfree(task);
     return NULL;
@@ -79,12 +87,7 @@ struct task *create_task (struct task *parent, page_table_t page_table) {
   task->kernel_frame.registers[REG_A0] = (u64) task;
   task->kernel_frame.pc = (u64) task_entry;
 
-  node->next = NULL;
-  node->prev = last_task;
-  node->task = task;
-  if (last_task != NULL) last_task->next = node;
-  last_task = node;
-  if (next_task == NULL) next_task = node;
+  list_push(&tasks, node);
 
   return task;
 }
@@ -94,48 +97,40 @@ void destroy_task (struct task *task) {
     panic("attempting to kill init");
   }
 
-  struct task_list *entry = task->sched;
-  if (entry->next != NULL) entry->next->prev = entry->prev;
-  if (entry->prev != NULL) entry->prev->next = entry->next;
-  if (entry == next_task) next_task = entry->next;
-  if (entry == last_task) last_task = entry->prev;
+  struct list_node *entry = task->sched;
+  list_remove(&tasks, entry);
   kfree(entry);
   kfree(task);
 }
 
-__attribute__((noreturn)) void schedule () {
-  if (next_task == NULL) {
-    current_task = NULL;
+__attribute__((noreturn)) static void do_schedule () {
+  kassert(current_task_node == NULL, "schedule: current_task_node not null");
+  kassert(current_task == NULL, "schedule: current_task not null");
+
+  current_task_node = list_shift(&tasks);
+  if (current_task_node == NULL) {
     idle();
   }
-  struct task *task = next_task->task;
+  current_task = current_task_node->value;
 
 #ifdef DEBUG_SCHED
   printk("[debug sched] next task: %d\n", task->pid);
 #endif
-  current_task = task;
 
-  if (task->mode == MODE_SUPERVISOR) {
-    klongjmp(&task->kernel_frame);
-  } else if (task->mode == MODE_USER) {
-    trapframe.task = task->user_frame;
-    return_to_user(task->page_table);
+  if (current_task->mode == MODE_SUPERVISOR) {
+    klongjmp(&current_task->kernel_frame);
+  } else if (current_task->mode == MODE_USER) {
+    trapframe.task = current_task->user_frame;
+    return_to_user(current_task->page_table);
   } else {
     panic("schedule: invalid task mode");
   }
 }
 
 __attribute__((noreturn)) void schedule_next () {
-  if (next_task == NULL) {
-    panic("schedule_next: next_task is NULL");
-  }
-  next_task->prev = last_task;
-  if (last_task != NULL) last_task->next = next_task;
-  last_task = next_task;
-  next_task = next_task->next;
-  last_task->next = NULL;
-  if (next_task) next_task->prev = NULL;
-
+  list_push(&tasks, current_task_node);
+  current_task = NULL;
+  current_task_node = NULL;
   schedule();
 }
 
@@ -143,5 +138,20 @@ __attribute__((noreturn)) void idle () {
   enable_interrupts();
   while (true) {
     __asm__("wfi");
+  }
+}
+
+void wait (struct list *group) {
+  list_push(group, current_task_node);
+  if (ksetjmp(&current_task->kernel_frame)) return;
+  current_task = NULL;
+  current_task_node = NULL;
+  schedule();
+}
+
+void wakeup (struct list *group) {
+  struct list_node *node;
+  while ((node = list_shift(group))) {
+    list_push(&tasks, node);
   }
 }

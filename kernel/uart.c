@@ -12,8 +12,11 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "list.h"
+#include "main.h"
 #include "memlayout.h"
 #include "panic.h"
+#include "sched.h"
 
 // the UART control registers are memory-mapped
 // at address UART0. this macro returns the
@@ -45,9 +48,14 @@
 
 // the transmit output buffer.
 #define UART_TX_BUF_SIZE 32
-char uart_tx_buf[UART_TX_BUF_SIZE];
-uint64_t uart_tx_w; // write next to uart_tx_buf[uart_tx_w % UART_TX_BUF_SIZE]
-uint64_t uart_tx_r; // read next from uart_tx_buf[uart_tx_r % UART_TX_BUF_SIZE]
+char uart_out_tx_buf[UART_TX_BUF_SIZE];
+uint64_t uart_out_tx_w;
+uint64_t uart_out_tx_r;
+char uart_in_tx_buf[UART_TX_BUF_SIZE];
+uint64_t uart_in_tx_w;
+uint64_t uart_in_tx_r;
+
+struct list wait_in, wait_out;
 
 void uart_init (void) {
   // disable interrupts.
@@ -71,6 +79,16 @@ void uart_init (void) {
 
   // enable transmit and receive interrupts.
   WriteReg(IER, IER_TX_ENABLE | IER_RX_ENABLE);
+
+  list_init(&wait_in);
+  list_init(&wait_out);
+}
+
+static inline bool uart_out_buffer_full () {
+  return uart_out_tx_w == uart_out_tx_r + UART_TX_BUF_SIZE;
+}
+static inline bool uart_in_buffer_full () {
+  return uart_in_tx_w == uart_in_tx_r + UART_TX_BUF_SIZE;
 }
 
 void uartputc (int c) {
@@ -78,29 +96,39 @@ void uartputc (int c) {
     while (true) continue;
   }
 
-  // wait for Transmit Holding Empty to be set in LSR.
-  while((ReadReg(LSR) & LSR_TX_IDLE) == 0)
-    ;
-  WriteReg(THR, c);
+  bool idle = ReadReg(LSR) & LSR_TX_IDLE;
+  if (kernel_initialized && !idle) {
+    while (uart_out_buffer_full()) {
+      wait(&wait_out);
+    }
+    uart_out_tx_buf[uart_out_tx_w % UART_TX_BUF_SIZE] = c;
+    ++uart_out_tx_w;
+    uartstart();
+  } else {
+    // wait for Transmit Holding Empty to be set in LSR.
+    while((ReadReg(LSR) & LSR_TX_IDLE) == 0)
+      ;
+    WriteReg(THR, c);
+  }
 }
 
 void uartstart (void) {
   while (1) {
-    if(uart_tx_w == uart_tx_r){
+    if (uart_out_tx_w == uart_out_tx_r) {
       // transmit buffer is empty.
       return;
     }
-    
-    if((ReadReg(LSR) & LSR_TX_IDLE) == 0){
+
+    if ((ReadReg(LSR) & LSR_TX_IDLE) == 0) {
       // the UART transmit holding register is full,
       // so we cannot give it another byte.
       // it will interrupt when it's ready for a new byte.
       return;
     }
-    
-    int c = uart_tx_buf[uart_tx_r % UART_TX_BUF_SIZE];
-    uart_tx_r += 1;
-    
+
+    int c = uart_out_tx_buf[uart_out_tx_r % UART_TX_BUF_SIZE];
+    uart_out_tx_r += 1;
+
     WriteReg(THR, c);
   }
 }
@@ -114,19 +142,39 @@ int uartgetc (void) {
   }
 }
 
+int getchar () {
+  while (uart_in_tx_r == uart_in_tx_w) {
+    wait(&wait_in);
+  }
+  int c = uart_in_tx_buf[uart_in_tx_r % UART_TX_BUF_SIZE];
+  ++uart_in_tx_r;
+  return c;
+}
+
 // handle a uart interrupt, raised because input has
 // arrived, or the uart is ready for more output, or
 // both. called from devintr().
 void uartintr (void) {
   // read and process incoming characters.
+  bool has_chars = false;
   while (1) {
     int c = uartgetc();
     if (c == -1)
       break;
-    // TODO
-    uartputc(c);
+    if (!uart_in_buffer_full()) {
+      uart_in_tx_buf[uart_in_tx_w % UART_TX_BUF_SIZE] = c;
+      ++uart_in_tx_w;
+    }
+    has_chars = true;
+  }
+  if (has_chars) {
+    wakeup(&wait_in);
   }
 
   // send buffered characters.
   uartstart();
+
+  if (!uart_out_buffer_full()) {
+    wakeup(&wait_out);
+  }
 }

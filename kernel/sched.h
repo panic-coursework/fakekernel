@@ -1,5 +1,8 @@
 #pragma once
 
+#include <stdbool.h>
+
+#include "list.h"
 #include "mm.h"
 #include "trap.h"
 #include "type.h"
@@ -12,7 +15,7 @@ enum task_mode {
 struct task {
   pid_t pid;
   struct task *parent;
-  struct task_list *sched;
+  struct list_node *sched;
   page_table_t page_table;
   enum task_mode mode;
   struct cpu kernel_frame;
@@ -29,3 +32,6 @@ void destroy_task (struct task *task);
 __attribute__((noreturn)) void schedule ();
 __attribute__((noreturn)) void schedule_next ();
 __attribute__((noreturn)) void idle ();
+
+void wait (struct list *group);
+void wakeup (struct list *group);

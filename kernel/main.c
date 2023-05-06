@@ -10,7 +10,9 @@
 #include "trap.h"
 #include "uart.h"
 
-__attribute__((noreturn)) void main () {
+bool kernel_initialized;
+
+__attribute__((noreturn)) void main () { // NOLINT
   uart_init();
 
   printk("Hello %s %s %s!\n", "Brand", "New", "World");
@@ -29,6 +31,8 @@ __attribute__((noreturn)) void main () {
 
   task = create_task(NULL, load_elf(program));
   task->user_frame.pc = program->e_entry;
+
+  kernel_initialized = true;
 
   schedule();
 }

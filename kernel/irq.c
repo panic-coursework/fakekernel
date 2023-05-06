@@ -1,5 +1,6 @@
 #include "irq.h"
 
+#include "main.h"
 #include "memlayout.h"
 #include "mm.h"
 #include "mmdefs.h"
@@ -34,6 +35,9 @@ static int handle_interrupt (struct cpu *regs, enum task_mode mode) {
 #ifdef DEBUG_TIMER
     printk("timer interrupt\n");
 #endif
+    if (current_task == NULL) {
+      schedule();
+    }
     if (mode == MODE_SUPERVISOR) {
       current_task->kernel_frame = *regs;
     } else if (mode == MODE_USER) {
@@ -53,14 +57,21 @@ static int handle_interrupt (struct cpu *regs, enum task_mode mode) {
 struct cpu *kernel_trap (struct cpu *regs) {
   struct status sstatus = read_sstatus();
   if (!sstatus.spp) {
+    kernel_initialized = false;
     dump_csr_s();
     panic("kernel_trap: called from user mode");
   }
 
-  current_task->kernel_frame = *regs;
-  csrr("sepc", current_task->kernel_frame.pc);
+  if (current_task != NULL) {
+    current_task->kernel_frame = *regs;
+    csrr("sepc", current_task->kernel_frame.pc);
+  }
 
-  if (handle_interrupt(regs, MODE_SUPERVISOR) == 0) return regs;
+  if (handle_interrupt(regs, MODE_SUPERVISOR) == 0) {
+    return regs;
+  }
+
+  kernel_initialized = false;
   dump_csr_s();
   panic("unable to handle kernel interrupt");
 }

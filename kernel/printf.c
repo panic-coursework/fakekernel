@@ -1,6 +1,5 @@
 #include "printf.h"
 
-#include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -84,10 +83,7 @@ static u64 next_arg (va_list *args, bool is64) {
   }
 }
 
-void printk (const char *fmt, ...) {
-  va_list args;
-  va_start(args, fmt);
-
+void vprintk (const char *fmt, va_list args) {
   char c;
   while ((c = *fmt++)) {
     if (c != '%') {
@@ -167,4 +163,10 @@ void printk (const char *fmt, ...) {
   }
 
   va_end(args);
+}
+
+void printk (const char *fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  vprintk(fmt, args);
 }

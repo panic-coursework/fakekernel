@@ -6,7 +6,7 @@ AS = $(CROSS_COMPILE)as
 LD = $(CROSS_COMPILE)ld
 OBJDUMP = $(CROSS_COMPILE)objdump
 
-CFLAGS = -Wall -O2 -fno-omit-frame-pointer -ggdb -gdwarf-2
+CFLAGS = -Wall -Wextra -O2 -fno-omit-frame-pointer -ggdb -gdwarf-2
 CFLAGS += -MD
 CFLAGS += -mcmodel=medany
 CFLAGS += -ffreestanding -fno-common -nostdlib -mno-relax
