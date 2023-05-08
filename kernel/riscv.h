@@ -111,9 +111,7 @@ static inline void write_sip (struct interrupt_bitmap sip) {
 }
 
 static inline void enable_interrupts () {
-  struct status s = read_sstatus();
-  s.sie = true;
-  write_sstatus(s);
+  __asm__ volatile("csrs sstatus, %0" : : "r"(0b10));
 }
 
 

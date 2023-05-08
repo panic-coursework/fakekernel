@@ -7,6 +7,7 @@
 #include "list.h"
 #include "memlayout.h"
 #include "mm.h"
+#include "mmdefs.h"
 #include "panic.h"
 #include "printf.h"
 #include "riscv.h"
@@ -41,7 +42,7 @@ __attribute__((noreturn)) void schedule () {
 static void yield_to_user (struct task *task) {
   trapframe.task = task->user_frame;
   if (ksetjmp(&task->kernel_frame) == 0) {
-    return_to_user(task->page_table);
+    return_to_user();
   }
 }
 
@@ -56,7 +57,7 @@ static void task_entry (struct task *task) {
       if (scause.code == 13 || scause.code == 15) {
         u64 stval = csrr("stval");
         // stack autoexpand
-        struct vm_area *area = vm_find_stack(&task->vm_areas, csrr("stval"));
+        struct vm_area *area = vm_find_stack(&task->vm_areas, stval);
         if (area != NULL) {
           u64 va_start = stval & ~(PAGE_SIZE - 1);
           while (area->va > va_start) {
@@ -71,7 +72,7 @@ static void task_entry (struct task *task) {
             area->va -= PAGE_SIZE;
             ++area->n_pages;
             u32 flags = pte_flags_from_vm_flags(area->flags);
-            if (set_page(task->page_table, area->va, (u64) page, flags)) {
+            if (set_page(task->page_table, area->va, PA((u64) page), flags)) {
               panic("stack autoexpand: set_page");
             }
           }
@@ -95,6 +96,9 @@ struct task *create_task (struct task *parent) {
     return NULL;
   }
   void *stack = alloc_pages(0).address;
+#ifdef DEBUG_KERN_STACK
+  printk("stack for %d is at %p\n", next_task_id, stack);
+#endif
   if (stack == NULL) {
     kfree(task);
     kfree(node);
@@ -121,6 +125,7 @@ void destroy_task (struct task *task) {
     panic("attempting to kill init");
   }
 
+  destroy_page_table(task->page_table);
   vm_decref_all(&task->vm_areas);
   list_remove(task->sched);
   kfree(task->sched);
@@ -141,13 +146,19 @@ __attribute__((noreturn)) static void do_schedule () {
   printk("[debug sched] next task: %d\n", task->pid);
 #endif
 
+  if ((u64) current_task->page_table != csrr("satp")) {
+    __asm__ volatile("sfence.vma x0, x0");
+    csrw("satp", satp_from_table(current_task->page_table, false));
+    __asm__ volatile("sfence.vma x0, x0");
+  }
+
   if (current_task->mode == MODE_SUPERVISOR) {
     klongjmp(&current_task->kernel_frame);
   } else if (current_task->mode == MODE_USER) {
     trapframe.task = current_task->user_frame;
-    return_to_user(current_task->page_table);
+    return_to_user();
   } else {
-    panic("schedule: invalid task mode");
+    panic("schedule: invalid task mode %p", current_task->mode);
   }
 }
 
@@ -166,8 +177,13 @@ __attribute__((noreturn)) void idle () {
 }
 
 void wait (struct list *group) {
+  kassert(group != NULL, "waiting on NULL group");
+  kassert(current_task_node != NULL, "NULL task waiting");
   list_push(group, current_task_node);
-  if (ksetjmp(&current_task->kernel_frame)) return;
+  current_task->mode = MODE_SUPERVISOR;
+  if (ksetjmp(&current_task->kernel_frame)) {
+    return;
+  }
   current_task = NULL;
   current_task_node = NULL;
   schedule();

@@ -71,9 +71,9 @@ int load_elf (struct task *task, elf program) {
         panic("load_elf: out of memory");
       }
 #ifdef DEBUG_ELF
-      printk("set_page: %p %p %b\n", addr, page, flags);
+      printk("set_page: %p %p %b\n", addr, PA((u64) page), flags);
 #endif
-      int err = set_page(table, addr.value, (u64) page, flags);
+      int err = set_page(table, addr.value, PA((u64) page), flags);
       if (err) {
         panic("load_elf: set_page: %d", err);
       }
@@ -103,19 +103,19 @@ int load_elf (struct task *task, elf program) {
     panic("load_elf: out of memory");
   }
 
-  u64 stack_begin = STACK - PAGE_SIZE;
+  u64 stack_begin = USERSTACK - PAGE_SIZE;
   struct vm_area *area = vm_area_create(stack_begin, 1, stack_vm_flags);
   if (vm_add_area(&task->vm_areas, area) || vm_area_add_page(area, stack_pa)) {
     panic("load_elf: out of memory");
   }
-  int err = set_page(table, stack_begin, (u64) stack_pa, stack_pt_flags);
+  int err = set_page(table, stack_begin, PA((u64) stack_pa), stack_pt_flags);
   if (err) {
     panic("load_elf: set_page: %d", err);
   }
   for (int i = 0; i < 32; ++i) {
     task->user_frame.registers[i] = 0;
   }
-  task->user_frame.registers[REG_SP] = STACK;
+  task->user_frame.registers[REG_SP] = USERSTACK;
 
   return 0;
 }

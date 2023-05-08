@@ -86,12 +86,15 @@ static inline bool pte_invalid_or_leaf (sv39_pte pte) {
   return !(pte.flags & PTE_VALID) || pte_is_leaf(pte.flags);
 }
 static inline page_table_t subtable_from_pte (sv39_pte pte) {
-  return (page_table_t) pa_from_ppn(pte.ppn);
+  return (page_table_t) VA(pa_from_ppn(pte.ppn));
 }
-static inline satp satp_from_table (page_table_t table) {
+static inline satp satp_from_table (page_table_t table, bool early) {
   sv39_pa pa = { .value = (u64) table };
+  if (!early) {
+    pa.value -= KERNBASE - KERNPHY;
+  }
   if (pa.off != 0) {
-    panic("misaligned page table");
+    panic("misaligned page table %p", table);
   }
   return (satp) {
     .mode = MM_SV39,

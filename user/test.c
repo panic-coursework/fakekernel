@@ -12,6 +12,10 @@ int fact (int x) {
 }
 
 void _start () {
+  while (true) {
+    putint(internal_syscall0(2));
+    // internal_syscall0(3);
+  }
   putint(fact(getint()));
   putchar('\n');
   internal_syscall0(114514);

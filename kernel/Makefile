@@ -38,7 +38,7 @@ qemureplay : kernel.dump replay.bin
 	$(QEMU) $(QEMUOPTS) $(QEMUOPTS_REPLAY) -s -S
 
 kernel.dump: kernel
-	$(OBJDUMP) -D $< > $@
+	$(OBJDUMP) -S -D $< > $@
 %.dump: %.o
 	$(OBJDUMP) -D $< > $@
 

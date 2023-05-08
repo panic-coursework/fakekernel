@@ -37,7 +37,8 @@
 #define CLINT_MTIME (CLINT + 0xBFF8) // cycles since boot.
 
 // qemu puts platform-level interrupt controller (PLIC) here.
-#define PLIC 0x0c000000L
+// virtual address here; not used in M-mode
+#define PLIC (MMIOBASE + 0x0c000000L)
 #define PLIC_PRIORITY (PLIC + 0x0)
 #define PLIC_PENDING (PLIC + 0x1000)
 #define PLIC_MENABLE(hart) (PLIC + 0x2000 + (hart)*0x100)
@@ -50,31 +51,26 @@
 // the kernel expects there to be RAM
 // for use by the kernel and user pages
 // from physical address 0x80000000 to PHYSTOP.
-#define KERNBASE 0x80000000L
-#define PHYSTOP (KERNBASE + 128*1024*1024)
+#define PHYBASE 0x80000000L
+#define PHYSIZE (128*1024*1024)
+#define PHYSTOP (PHYBASE + PHYSIZE)
 #define PAGE_INDEX_BITS 12
 #define PAGE_SIZE (1 << PAGE_INDEX_BITS)
 #define MAX_ORDER 10
 #define SKIP_ORDER 8 // 256 * 4K = 1M
 
 #define MAXVA (1L << (9 + 9 + 9 + 12 - 1))
-#define STACK 0x3f00000000
+#define SPLIT    0x3f00000000L
+#define KERNPHY  (PHYBASE)
+#define KERNBASE (SPLIT)
+// #define KERNBASE (PHYBASE)
+#define KERNSTOP (KERNBASE + 0x40000000L)
+#define KERN_PHYBASE (KERNBASE)
+#define KERN_PHYSTOP (KERN_PHYBASE + PHYSIZE)
+#define MMIOPHY  0x0
+#define MMIOBASE (KERNSTOP)
+#define MMIOSTOP (MMIOBASE + 0x40000000L)
+#define USERSTACK 0x3ef0000000L
 
-// map the trampoline page to the highest address,
-// in both user and kernel space.
-#define TRAMPOLINE (MAXVA - PAGE_SIZE)
-
-// map kernel stacks beneath the trampoline,
-// each surrounded by invalid guard pages.
-#define KSTACK(p) (TRAMPOLINE - ((p)+1)* 2*PGSIZE)
-
-// User memory layout.
-// Address zero first:
-//   text
-//   original data and bss
-//   fixed-size stack
-//   expandable heap
-//   ...
-//   TRAPFRAME (p->trapframe, used by the trampoline)
-//   TRAMPOLINE (the same page as in the kernel)
-#define TRAPFRAME (TRAMPOLINE - PAGE_SIZE)
+#define PA(x) ((x) - KERNBASE + KERNPHY)
+#define VA(x) ((x) + KERNBASE - KERNPHY)

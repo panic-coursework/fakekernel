@@ -1,5 +1,5 @@
 ARCH = riscv
-CROSS_COMPILE = riscv64-elf-
+CROSS_COMPILE = riscv64-linux-gnu-
 
 CC = $(CROSS_COMPILE)gcc
 AS = $(CROSS_COMPILE)as

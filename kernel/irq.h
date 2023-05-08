@@ -5,6 +5,6 @@
 
 void irq_init ();
 
-__attribute__((noreturn)) void return_to_user (page_table_t table);
+__attribute__((noreturn)) void return_to_user ();
 
 void dump_cpu (struct cpu *cpu);

@@ -28,6 +28,7 @@ u64 syscall (struct task *task) {
     return task->pid;
 
   case SYS_yield:
+    current_task->mode = MODE_SUPERVISOR;
     if (ksetjmp(&current_task->kernel_frame)) {
       return 0;
     }

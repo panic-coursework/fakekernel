@@ -50,7 +50,12 @@ mret:
 	csrw	mstatus, t0
 
 	# return
+	li	t0, (KERNBASE - KERNPHY)
+	add	ra, ra, t0
 	csrw	mepc, ra
+
+	add	sp, sp, t0
+
 	mret
 
 

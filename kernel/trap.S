@@ -1,81 +1,5 @@
 #include "memlayout.h"
 
-	.section	.text.kernelvec
-	.align	2
-	.globl	kernelvec
-kernelvec:
-	sd	x2, -240(sp)
-	addi	sp, sp, -256
-
-	sd	x1, 8(sp)
-	sd	x3, 24(sp)
-	sd	x4, 32(sp)
-	sd	x5, 40(sp)
-	sd	x6, 48(sp)
-	sd	x7, 56(sp)
-	sd	x8, 64(sp)
-	sd	x9, 72(sp)
-	sd	x10, 80(sp)
-	sd	x11, 88(sp)
-	sd	x12, 96(sp)
-	sd	x13, 104(sp)
-	sd	x14, 112(sp)
-	sd	x15, 120(sp)
-	sd	x16, 128(sp)
-	sd	x17, 136(sp)
-	sd	x18, 144(sp)
-	sd	x19, 152(sp)
-	sd	x20, 160(sp)
-	sd	x21, 168(sp)
-	sd	x22, 176(sp)
-	sd	x23, 184(sp)
-	sd	x24, 192(sp)
-	sd	x25, 200(sp)
-	sd	x26, 208(sp)
-	sd	x27, 216(sp)
-	sd	x28, 224(sp)
-	sd	x29, 232(sp)
-	sd	x30, 240(sp)
-	sd	x31, 248(sp)
-
-	mv	a0, sp
-	call	kernel_trap
-
-	ld	x1, 8(a0)
-	ld	x2, 16(a0)
-	ld	x3, 24(a0)
-	ld	x4, 32(a0)
-	ld	x5, 40(a0)
-	ld	x6, 48(a0)
-	ld	x7, 56(a0)
-	ld	x8, 64(a0)
-	ld	x9, 72(a0)
-	ld	x11, 88(a0)
-	ld	x12, 96(a0)
-	ld	x13, 104(a0)
-	ld	x14, 112(a0)
-	ld	x15, 120(a0)
-	ld	x16, 128(a0)
-	ld	x17, 136(a0)
-	ld	x18, 144(a0)
-	ld	x19, 152(a0)
-	ld	x20, 160(a0)
-	ld	x21, 168(a0)
-	ld	x22, 176(a0)
-	ld	x23, 184(a0)
-	ld	x24, 192(a0)
-	ld	x25, 200(a0)
-	ld	x26, 208(a0)
-	ld	x27, 216(a0)
-	ld	x28, 224(a0)
-	ld	x29, 232(a0)
-	ld	x30, 240(a0)
-	ld	x31, 248(a0)
-	ld	a0, 80(a0)
-
-	sret
-
-
 	.section	.text.ksetjmp
 	.globl	ksetjmp
 ksetjmp:
@@ -160,20 +84,17 @@ klongjmp:
 
 
 	.section	._early.trapframe
-	.align	12
+	.align	2
 	.globl	trapframe
 trapframe:
-	.zero	PAGE_SIZE
+	.zero	512
 
-	.section	._trampoline
-	.align	12
-	.globl	trampoline
-trampoline:
-
-	.globl	_user_to_kernel
-_user_to_kernel:
+	.section	.text.trap_vector
+	.align	2
+	.globl	trap_vector
+trap_vector:
 	csrw	sscratch, t0
-	li	t0, TRAPFRAME
+	la	t0, trapframe
 
 	sd	x1, 8(t0)
 	sd	x2, 16(t0)
@@ -207,30 +128,22 @@ _user_to_kernel:
 	sd	x31, 248(t0)
 	csrr	t1, sscratch
 	sd	t1, 40(t0)
+
 	csrr	t1, sepc
 	sd	t1, 256(t0)
 
 	ld	t1, 272(t0)
-	sfence.vma	x0, x0
-	csrw	satp, t1
-	sfence.vma	x0, x0
 	ld	sp, 264(t0)
-
-	ld	t0, 280(t0)
-	jr	t0
+	j	trap_handler
 
 
+	.section	.text._kernel_to_user
 	.align	2
 	.globl	_kernel_to_user
 _kernel_to_user:
-	li	t0, TRAPFRAME
+	la	t0, trapframe
 	ld	t1, 256(t0)
 	csrw	sepc, t1
-	sd	sp, 264(t0)
-
-	sfence.vma	x0, x0
-	csrw	satp, a0
-	sfence.vma	x0, x0
 
 	ld	t1, 40(t0)
 	csrw	sscratch, t1
