@@ -1,5 +1,6 @@
 #include "syscall.h"
 
+#include "elf.h"
 #include "errno.h"
 #include "printf.h"
 #include "riscv.h"
@@ -33,6 +34,28 @@ u64 syscall (struct task *task) {
       return 0;
     }
     schedule_next();
+
+  case SYS_fork: {
+    let task = task_clone(current_task);
+    if (!task) {
+      return -EAGAIN;
+    }
+    task->user_frame.registers[REG_A0] = 0;
+    return task->pid;
+  }
+
+  case SYS_exit:
+    task_destroy(current_task);
+    schedule();
+
+  case SYS_exec: {
+    // TODO
+    elf program = (elf) VA((void __phy *) 0x800f0000L);
+    struct task *task = task_create(current_task);
+    load_elf(task, program);
+    task->user_frame.pc = program->e_entry;
+    return 0;
+  }
 
   case 114514:
     vm_dump(&current_task->vm_areas);

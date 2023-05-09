@@ -12,6 +12,9 @@
 #include "type.h"
 #include "uart.h"
 
+bool may_page_fault;
+struct cpu page_fault_handler;
+
 static int handle_interrupt (struct cpu *regs, enum task_mode mode) {
   struct cause scause = read_scause();
   if (!scause.interrupt) return 1;
@@ -28,7 +31,7 @@ static int handle_interrupt (struct cpu *regs, enum task_mode mode) {
   }
 
   if (scause.code == CAUSE_SSI) {
-    __asm__ volatile("csrc sip, %0" : : "r"(0b10));
+    csrnc("sip", interrupt_bitmap, ssi);
 
 #ifdef DEBUG_TIMER
     printk("timer interrupt\n");
@@ -41,7 +44,7 @@ static int handle_interrupt (struct cpu *regs, enum task_mode mode) {
     } else if (mode == MODE_USER) {
       current_task->user_frame = *regs;
     } else {
-      panic("handle_interrupt: unknown mode %d", mode);
+      panic("unknown mode %d", mode);
     }
     current_task->mode = mode;
     schedule_next();
@@ -65,12 +68,20 @@ static struct cpu *kernel_trap (struct cpu *regs) {
     schedule();
   }
 
+  struct cause scause = read_scause();
+  // FIXME: magic number
+  if (!scause.interrupt && (scause.code == 13 || scause.code == 15)) {
+    if (may_page_fault) {
+      klongjmp(&page_fault_handler);
+    }
+  }
+
   kernel_initialized = false;
   dump_csr_s();
   panic("unable to handle kernel interrupt");
 }
 
-__attribute__((noreturn)) void trap_handler () {
+__noreturn void trap_handler () {
   if (read_sstatus().spp) {
     klongjmp(kernel_trap(&trapframe.task));
   }
@@ -97,6 +108,8 @@ void irq_init () {
   sie.sei = true;
   csrw("sie", sie);
 
+  may_page_fault = false;
+
   __asm__ volatile ("mv %0, sp" : "=r" (trapframe.kernel_sp));
 
   *(u32 *)(PLIC + UART0_IRQ * 4) = 1;
@@ -105,7 +118,7 @@ void irq_init () {
 }
 
 
-__attribute__((noreturn)) void return_to_user () {
+__noreturn void return_to_user () {
   // turn off interrupts
   struct status sstatus = read_sstatus();
   sstatus.spp = 0;

@@ -62,15 +62,16 @@
 #define MAXVA (1L << (9 + 9 + 9 + 12 - 1))
 #define SPLIT    0x3f00000000L
 #define KERNPHY  (PHYBASE)
-#define KERNBASE (SPLIT)
-// #define KERNBASE (PHYBASE)
+// #define KERNBASE (SPLIT)
+#define KERNBASE (PHYBASE)
 #define KERNSTOP (KERNBASE + 0x40000000L)
 #define KERN_PHYBASE (KERNBASE)
 #define KERN_PHYSTOP (KERN_PHYBASE + PHYSIZE)
 #define MMIOPHY  0x0
 #define MMIOBASE (KERNSTOP)
 #define MMIOSTOP (MMIOBASE + 0x40000000L)
-#define USERSTACK 0x3ef0000000L
+#define USERSTACK    0x3ef0000000L
+#define USERSTACKMIN 0x3ee0000000L
 
-#define PA(x) ((x) - KERNBASE + KERNPHY)
-#define VA(x) ((x) + KERNBASE - KERNPHY)
+#define _PA(x) ((x) - KERNBASE + KERNPHY)
+#define _VA(x) ((x) + KERNBASE - KERNPHY)

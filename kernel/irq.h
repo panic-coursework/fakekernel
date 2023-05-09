@@ -5,6 +5,9 @@
 
 void irq_init ();
 
-__attribute__((noreturn)) void return_to_user ();
+__noreturn void return_to_user ();
 
 void dump_cpu (struct cpu *cpu);
+
+extern bool may_page_fault;
+extern struct cpu page_fault_handler;

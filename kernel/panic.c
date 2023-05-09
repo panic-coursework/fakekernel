@@ -7,7 +7,7 @@
 
 bool panicked = false;
 
-__attribute__((noreturn)) void panic (const char *fmt, ...) {
+__noreturn void _panic (const char *fmt, ...) {
   kernel_initialized = false;
 
   va_list args;
@@ -19,4 +19,10 @@ __attribute__((noreturn)) void panic (const char *fmt, ...) {
 
   panicked = true;
   while (true) continue;
+}
+
+void kassert (bool cond, const char *message) {
+  if (!cond) {
+    _panic("assertion failed: %s", message);
+  }
 }

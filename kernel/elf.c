@@ -18,8 +18,8 @@ int load_elf (struct task *task, elf program) {
 
   // TODO: sanity check
   for (int i = 0; i < program->e_phnum; ++i) {
-    Elf64_Phdr *phdr = (void *) ((u64) program + program->e_phoff +
-                                 i * program->e_phentsize);
+    let phdr = (Elf64_Phdr *) ((u64) program + program->e_phoff +
+                               i * program->e_phentsize);
     switch (phdr->p_type) {
       case PT_LOAD:
         break;
@@ -55,27 +55,27 @@ int load_elf (struct task *task, elf program) {
       ++end_addr.vpn;
     }
 
-    struct vm_area *area =
-      vm_area_create(addr.value, end_addr.vpn - addr.vpn, area_flags);
+    let user_addr = (void __user *) addr.ptr;
+    let area = vm_area_create(user_addr, end_addr.vpn - addr.vpn, area_flags);
     if (vm_add_area(&task->vm_areas, area)) {
       // TODO
-      panic("load_elf: out of memory");
+      panic("out of memory");
     }
 
     while (addr.value < end_addr.value) {
       u8 *page = alloc_pages(0).address;
       if (page == NULL) {
-        panic("load_elf: out of memory");
+        panic("out of memory");
       }
       if (vm_area_add_page(area, page)) {
-        panic("load_elf: out of memory");
+        panic("out of memory");
       }
 #ifdef DEBUG_ELF
-      printk("set_page: %p %p %b\n", addr, PA((u64) page), flags);
+      printk("set_page: %p %p %b\n", addr, PA(page), flags);
 #endif
-      int err = set_page(table, addr.value, PA((u64) page), flags);
+      int err = set_page(table, addr.ptr, PA(page), flags);
       if (err) {
-        panic("load_elf: set_page: %d", err);
+        panic("set_page: %d", err);
       }
 
       for (int k = 0; k < PAGE_SIZE; ++k) {
@@ -98,19 +98,19 @@ int load_elf (struct task *task, elf program) {
     stack_vm_flags |= VM_EXEC;
     stack_pt_flags |= PTE_EXEC;
   }
-  void *stack_pa = alloc_pages(0).address;
-  if (stack_pa == NULL) {
-    panic("load_elf: out of memory");
+  void *stack_page = alloc_pages(0).address;
+  if (stack_page == NULL) {
+    panic("out of memory");
   }
 
-  u64 stack_begin = USERSTACK - PAGE_SIZE;
+  let stack_begin = (void __user *) (USERSTACK - PAGE_SIZE);
   struct vm_area *area = vm_area_create(stack_begin, 1, stack_vm_flags);
-  if (vm_add_area(&task->vm_areas, area) || vm_area_add_page(area, stack_pa)) {
-    panic("load_elf: out of memory");
+  if (vm_add_area(&task->vm_areas, area) || vm_area_add_page(area, stack_page)) {
+    panic("out of memory");
   }
-  int err = set_page(table, stack_begin, PA((u64) stack_pa), stack_pt_flags);
+  int err = set_page_user(table, stack_begin, PA(stack_page), stack_pt_flags);
   if (err) {
-    panic("load_elf: set_page: %d", err);
+    panic("set_page: %d", err);
   }
   for (int i = 0; i < 32; ++i) {
     task->user_frame.registers[i] = 0;

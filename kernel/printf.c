@@ -63,7 +63,7 @@ static void print_int (u64 x, int flags, int pad) {
     print_uint(x, base, pad, padchar, false);
     return;
   }
-  if (x == INT64_MIN) {
+  if (x == (u64) INT64_MIN) {
     if (padchar == '0') putchar('-');
     for (int i = 20; i < pad; ++i) putchar(padchar);
     if (padchar == ' ') putchar('-');

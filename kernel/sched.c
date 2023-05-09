@@ -23,7 +23,7 @@ struct task *current_task;
 
 static void *schedule_stack;
 
-__attribute__((noreturn)) static void do_schedule ();
+__noreturn static void do_schedule ();
 
 void sched_init () {
   printk("Initializing scheduler.\n");
@@ -34,7 +34,7 @@ void sched_init () {
   current_task = NULL;
 }
 
-__attribute__((noreturn)) void schedule () {
+__noreturn void schedule () {
   __asm__ volatile ("mv sp, %0" : : "r" (schedule_stack));
   do_schedule();
 }
@@ -57,26 +57,28 @@ static void task_entry (struct task *task) {
       if (scause.code == 13 || scause.code == 15) {
         u64 stval = csrr("stval");
         // stack autoexpand
-        struct vm_area *area = vm_find_stack(&task->vm_areas, stval);
-        if (area != NULL) {
-          u64 va_start = stval & ~(PAGE_SIZE - 1);
-          while (area->va > va_start) {
-            void *page = alloc_pages(0).address;
-            if (!page) {
-              // TODO
-              panic("stack autoexpand: out of memory");
+        if (stval >= USERSTACKMIN && stval < USERSTACK) {
+          struct vm_area *area = vm_find_stack(&task->vm_areas, (void __user *) stval);
+          if (area != NULL) {
+            let va_start = (void __user *) (stval & ~(PAGE_SIZE - 1));
+            while (area->va > va_start) {
+              void *page = alloc_pages(0).address;
+              if (!page) {
+                // TODO
+                panic("stack autoexpand: out of memory");
+              }
+              if (vm_area_add_page(area, page)) {
+                panic("stack autoexpand: vm_area_add_page");
+              }
+              area->va = (u8 __user *) area->va - PAGE_SIZE;
+              ++area->n_pages;
+              u32 flags = pte_flags_from_vm_flags(area->flags);
+              if (set_page_user(task->page_table, area->va, PA(page), flags)) {
+                panic("stack autoexpand: set_page");
+              }
             }
-            if (vm_area_add_page(area, page)) {
-              panic("stack autoexpand: vm_area_add_page");
-            }
-            area->va -= PAGE_SIZE;
-            ++area->n_pages;
-            u32 flags = pte_flags_from_vm_flags(area->flags);
-            if (set_page(task->page_table, area->va, PA((u64) page), flags)) {
-              panic("stack autoexpand: set_page");
-            }
+            continue;
           }
-          continue;
         }
       }
       printk("pid %d fault!\n", task->pid);
@@ -84,33 +86,28 @@ static void task_entry (struct task *task) {
       break;
     }
   }
-  destroy_task(task);
+  task_destroy(task);
 }
 
-struct task *create_task (struct task *parent) {
+struct task *task_create (struct task *parent) {
   struct task *task = kmalloc(sizeof(struct task));
   if (task == NULL) return NULL;
   struct list_node *node = list_node_create(task);
-  if (node == NULL) {
-    kfree(task);
-    return NULL;
-  }
+  if (node == NULL) goto cleanup_task;
   void *stack = alloc_pages(0).address;
 #ifdef DEBUG_KERN_STACK
   printk("stack for %d is at %p\n", next_task_id, stack);
 #endif
-  if (stack == NULL) {
-    kfree(task);
-    kfree(node);
-    return NULL;
-  }
+  if (stack == NULL) goto cleanup_node;
 
   task->sched = node;
   task->pid = next_task_id++;
   task->parent = parent;
   list_init(&task->vm_areas);
   task->page_table = create_page_table();
+  if (task->page_table == NULL) goto cleanup_stack;
   task->mode = MODE_SUPERVISOR;
+  task->kernel_stack = stack;
   task->kernel_frame.registers[REG_SP] = (u64) stack + PAGE_SIZE;
   task->kernel_frame.registers[REG_A0] = (u64) task;
   task->kernel_frame.pc = (u64) task_entry;
@@ -118,9 +115,28 @@ struct task *create_task (struct task *parent) {
   list_push(&tasks, node);
 
   return task;
+
+  cleanup_stack: free_pages((struct page) { .address = stack, .order = 0 });
+  cleanup_node: kfree(node);
+  cleanup_task: kfree(task);
+  return NULL;
 }
 
-void destroy_task (struct task *task) {
+struct task *task_clone (struct task *parent) {
+  struct task *task = task_create(parent);
+  if (!task) return NULL;
+
+  int err = vm_clone(&parent->vm_areas, task);
+  if (err) {
+    task_destroy(task);
+    return NULL;
+  }
+
+  task->user_frame = parent->user_frame;
+  return task;
+}
+
+void task_destroy (struct task *task) {
   if (task->pid == 1) {
     panic("attempting to kill init");
   }
@@ -128,11 +144,18 @@ void destroy_task (struct task *task) {
   destroy_page_table(task->page_table);
   vm_decref_all(&task->vm_areas);
   list_remove(task->sched);
+  free_pages((struct page) { .address = task->kernel_stack, .order = 0 });
   kfree(task->sched);
   kfree(task);
+
+  if (task == current_task) {
+    current_task = NULL;
+    current_task_node = NULL;
+    schedule();
+  }
 }
 
-__attribute__((noreturn)) static void do_schedule () {
+__noreturn static void do_schedule () {
   kassert(current_task_node == NULL, "schedule: current_task_node not null");
   kassert(current_task == NULL, "schedule: current_task not null");
 
@@ -148,7 +171,7 @@ __attribute__((noreturn)) static void do_schedule () {
 
   if ((u64) current_task->page_table != csrr("satp")) {
     __asm__ volatile("sfence.vma x0, x0");
-    csrw("satp", satp_from_table(current_task->page_table, false));
+    csrw("satp", satp_from_table(current_task->page_table));
     __asm__ volatile("sfence.vma x0, x0");
   }
 
@@ -158,18 +181,18 @@ __attribute__((noreturn)) static void do_schedule () {
     trapframe.task = current_task->user_frame;
     return_to_user();
   } else {
-    panic("schedule: invalid task mode %p", current_task->mode);
+    panic("invalid task mode %p", current_task->mode);
   }
 }
 
-__attribute__((noreturn)) void schedule_next () {
+__noreturn void schedule_next () {
   list_push(&tasks, current_task_node);
   current_task = NULL;
   current_task_node = NULL;
   schedule();
 }
 
-__attribute__((noreturn)) void idle () {
+__noreturn void idle () {
   enable_interrupts();
   while (true) {
     __asm__("wfi");

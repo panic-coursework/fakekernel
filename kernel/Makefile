@@ -6,10 +6,11 @@ AS = $(CROSS_COMPILE)as
 LD = $(CROSS_COMPILE)ld
 OBJDUMP = $(CROSS_COMPILE)objdump
 
-CFLAGS = -Wall -O2 -fno-omit-frame-pointer -ggdb -gdwarf-2
+CFLAGS += -Wall -Wextra -Wpedantic
+CFLAGS += -O2
+CFLAGS += -fno-omit-frame-pointer -ggdb -gdwarf-2
 CFLAGS += -MD
-CFLAGS += -mcmodel=medany
-CFLAGS += -ffreestanding -fno-common -nostdlib -mno-relax
+CFLAGS += -mcmodel=medany -ffreestanding -fno-common -nostdlib -mno-relax
 CFLAGS += -fno-stack-protector
 
 SRCS = $(shell find . -name '*.c' -or -name '*.s' -or -name '*.S')

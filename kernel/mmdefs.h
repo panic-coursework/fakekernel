@@ -33,10 +33,11 @@ typedef union {
     u32 vpn : 27;
   };
   u64 value;
+  void __mm *ptr;
 } sv39_va;
 
-static inline u64 pa_from_ppn (u64 ppn) {
-  return ppn << PAGE_INDEX_BITS;
+static inline void __phy *pa_from_ppn (u64 ppn) {
+  return (void __phy *) (ppn << PAGE_INDEX_BITS);
 }
 
 typedef union {
@@ -51,6 +52,7 @@ typedef union {
     u64 ppn : 44;
   };
   u64 value;
+  void __phy *ptr;
 } sv39_pa;
 
 #define PTE_VALID  (1 << 0)
@@ -88,11 +90,8 @@ static inline bool pte_invalid_or_leaf (sv39_pte pte) {
 static inline page_table_t subtable_from_pte (sv39_pte pte) {
   return (page_table_t) VA(pa_from_ppn(pte.ppn));
 }
-static inline satp satp_from_table (page_table_t table, bool early) {
-  sv39_pa pa = { .value = (u64) table };
-  if (!early) {
-    pa.value -= KERNBASE - KERNPHY;
-  }
+static inline satp satp_from_table (page_table_t table) {
+  sv39_pa pa = { .ptr = PA(table) };
   if (pa.off != 0) {
     panic("misaligned page table %p", table);
   }

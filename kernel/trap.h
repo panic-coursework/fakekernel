@@ -10,7 +10,7 @@ struct cpu {
 };
 
 int ksetjmp (struct cpu *cpu);
-__attribute__((noreturn)) void klongjmp (struct cpu *cpu);
+__noreturn void klongjmp (struct cpu *cpu);
 
 struct trapframe {
   struct cpu task;
@@ -19,5 +19,5 @@ struct trapframe {
 _Static_assert(sizeof(struct trapframe) < 512, "trapframe too large");
 extern struct trapframe trapframe;
 
-__attribute__((noreturn)) void trap_vector ();
-__attribute__((noreturn)) void _kernel_to_user ();
+__noreturn void trap_vector ();
+__noreturn void _kernel_to_user ();

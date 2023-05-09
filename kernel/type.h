@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #define NULL 0
 
@@ -17,3 +18,16 @@ _Static_assert(sizeof(i64) == 8, "Size of i64 is not 8");
 
 typedef u64 size_t;
 typedef u64 pid_t;
+
+#define let __auto_type
+#define __noreturn __attribute__((noreturn))
+
+#ifdef __clang__
+#define __mm __attribute__((noderef))
+#define __phy __attribute__((noderef, address_space(1)))
+#define __user __attribute__((noderef, address_space(2)))
+#else
+#define __mm
+#define __phy
+#define __user
+#endif

@@ -17,6 +17,7 @@ struct task {
   struct task *parent;
   struct list_node *sched;
   struct list vm_areas;
+  void *kernel_stack;
   page_table_t page_table;
   enum task_mode mode;
   struct cpu kernel_frame;
@@ -27,12 +28,13 @@ void sched_init ();
 
 extern struct task *current_task;
 
-struct task *create_task (struct task *parent);
-void destroy_task (struct task *task);
+struct task *task_create (struct task *parent);
+struct task *task_clone (struct task *parent);
+void task_destroy (struct task *task);
 
-__attribute__((noreturn)) void schedule ();
-__attribute__((noreturn)) void schedule_next ();
-__attribute__((noreturn)) void idle ();
+__noreturn void schedule ();
+__noreturn void schedule_next ();
+__noreturn void idle ();
 
 void wait (struct list *group);
 void wakeup (struct list *group);

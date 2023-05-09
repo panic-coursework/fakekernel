@@ -2,10 +2,11 @@
 
 #include <stdbool.h>
 
+#include "type.h"
+
 extern bool panicked;
-__attribute__((noreturn)) void panic (const char *fmt, ...);
-static inline void kassert (bool cond, const char *message) {
-  if (!cond) {
-    panic("assertion failed: %s", message);
-  }
-}
+__noreturn void _panic (const char *fmt, ...);
+void kassert (bool cond, const char *message);
+
+#define panic(...) \
+  _panic("%s:%d: %s: %s", __FILE__, __LINE__, __func__, __VA_ARGS__)

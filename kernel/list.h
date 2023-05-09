@@ -74,6 +74,15 @@ static inline void list_remove (struct list_node *node) {
   if (node == list->last) list->last = node->prev;
 }
 
+static inline void list_destroy (struct list *list) {
+  struct list_node *node = list->first;
+  while (node) {
+    kfree(node);
+    node = node->next;
+  }
+  list->first = list->last = NULL;
+}
+
 static inline void __list_foreach_step (struct list_node **node, void *value) {
   *node = (*node)->next;
   if (*node) *(void **) value = (*node)->value;

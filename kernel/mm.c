@@ -1,6 +1,7 @@
 #include "mm.h"
 
 #include "errno.h"
+#include "irq.h"
 #include "memlayout.h"
 #include "mmdefs.h"
 #include "panic.h"
@@ -13,7 +14,8 @@ __asm__(
   ".section ._early.page_table\n\t"
   ".align 12\n"
   "early_page_table:\n\t"
-  ".zero 0x1000"
+  ".zero 0x1000\n\t"
+  ".section .text"
 );
 
 struct page_table {
@@ -24,16 +26,16 @@ extern struct page_table early_page_table[512];
 
 static void map_kernel_pages (page_table_t table) {
   // set_page_1g could never fail
-  set_page_1g(table, MMIOBASE, MMIOPHY,
+  set_page_1g(table, (void *) MMIOBASE, (void __phy *) MMIOPHY,
               PTE_VALID | PTE_READ | PTE_WRITE | PTE_GLOBAL);
-  set_page_1g(table, KERNBASE, KERNPHY,
+  set_page_1g(table, (void *) KERNBASE, (void __phy *) KERNPHY,
               PTE_VALID | PTE_READ | PTE_WRITE | PTE_EXEC | PTE_GLOBAL);
 }
 
 void establish_identical_mapping () {
   printk("populating page table at %p\n", early_page_table);
   map_kernel_pages(early_page_table);
-  csrw("satp", satp_from_table(early_page_table, true));
+  csrw("satp", satp_from_table(early_page_table));
   __asm__ volatile("sfence.vma x0, x0");
 }
 
@@ -100,6 +102,18 @@ struct page alloc_pages (u32 order) {
   };
 }
 
+void dump_buddy () {
+  for (u32 order = 0; order < MAX_ORDER; ++order) {
+    int count = 0;
+    void **page = buddy_pages[order];
+    while (page != NULL) {
+      ++count;
+      page = *page;
+    }
+    printk("Order %2d has %8d free areas\n", order, count);
+  }
+}
+
 void mm_init () {
   printk("Initializing memory management.\n");
   page_allocator_init();
@@ -121,7 +135,7 @@ void free_pages (struct page page) {
     return;
   }
 
-  u64 area_size = (PAGE_SIZE >> page.order);
+  u64 area_size = (PAGE_SIZE << page.order);
   void *buddy = (void *) ((u64) page.address ^ area_size);
   void **prev = &buddy_pages[page.order];
   void **free = *prev;
@@ -132,10 +146,11 @@ void free_pages (struct page page) {
   }
   if (free == buddy) {
     *prev = *free;
-    return free_pages((struct page) {
-      .address = page.address,
+    free_pages((struct page) {
+      .address = (void *) ((u64) page.address & ~area_size),
       .order = page.order + 1,
     });
+    return;
   }
   *(void **)page.address = buddy_pages[page.order];
   buddy_pages[page.order] = page.address;
@@ -164,35 +179,38 @@ void kfree (void *buf) {
 }
 
 
-static inline sv39_va check_va_1g (u64 va) {
-  sv39_va sv_va = { .value = va };
+static inline sv39_va check_va_1g (void __mm *va) {
+  sv39_va sv_va = { .ptr = va };
   if (sv_va.off != 0 || sv_va.vpn0 != 0 || sv_va.vpn1 != 0) {
     panic("misaligned 1G superpage virtual address %p", va);
   }
   return sv_va;
 }
 
-static inline sv39_va check_va_2m (u64 va) {
-  sv39_va sv_va = { .value = va };
+static inline sv39_va check_va_2m (void __mm *va) {
+  sv39_va sv_va = { .ptr = va };
   if (sv_va.off != 0 || sv_va.vpn0 != 0) {
     panic("misaligned 2M superpage virtual address %p", va);
   }
   return sv_va;
 }
 
-static inline sv39_va check_va (u64 va) {
-  sv39_va sv_va = { .value = va };
+static inline sv39_va check_va (void __mm *va) {
+  sv39_va sv_va = { .ptr = va };
   if (sv_va.off != 0) {
     panic("misaligned page virtual address %p", va);
   }
   return sv_va;
 }
 
-int set_page_1g (page_table_t table, u64 va, u64 pa, u32 flags) {
+int set_page_1g_user (page_table_t table, void __user *va, void __phy *pa, u32 flags) {
+  return set_page_1g(table, (void *) va, pa, flags | PTE_USER);
+}
+int set_page_1g (page_table_t table, void __mm *va, void __phy *pa, u32 flags) {
   sv39_va sv_va = check_va_1g(va);
-  sv39_pa sv_pa = { .value = pa };
+  sv39_pa sv_pa = { .ptr = pa };
   if (sv_pa.off != 0 || ((sv_pa.ppn0 != 0 || sv_pa.ppn1 != 0) && pte_is_leaf(flags))) {
-    panic("set_page_1g: misaligned superpage pa %p", va);
+    panic("misaligned superpage pa %p", va);
   }
 
   sv39_pte *pte = &table->entries[sv_va.vpn2];
@@ -202,7 +220,7 @@ int set_page_1g (page_table_t table, u64 va, u64 pa, u32 flags) {
   return 0;
 }
 
-static page_table_t expand_superpage (page_table_t table, sv39_pte pte, int level) {
+static page_table_t expand_superpage (sv39_pte pte, int level) {
   page_table_t subtable = alloc_pages(0).address;
   if (subtable == NULL) return NULL;
 
@@ -218,16 +236,16 @@ static page_table_t expand_superpage (page_table_t table, sv39_pte pte, int leve
   return subtable;
 }
 
-static sv39_pte *ensure_page_2m (page_table_t table, u64 va) {
+static sv39_pte *ensure_page_2m (page_table_t table, void __mm *va) {
   sv39_va sv_va = check_va_2m(va);
   page_table_t subtable;
   sv39_pte *pte2 = &table->entries[sv_va.vpn2];
   if (pte_invalid_or_leaf(*pte2)) {
-    subtable = expand_superpage(table, *pte2, 1);
+    subtable = expand_superpage(*pte2, 1);
     if (subtable == NULL) return NULL;
     sv39_va subtable_va = sv_va;
     subtable_va.vpn1 = 0;
-    set_page_1g(table, subtable_va.value, PA((u64) subtable), PTE_VALID);
+    set_page_1g(table, subtable_va.ptr, PA(subtable), PTE_VALID);
   } else {
     subtable = subtable_from_pte(*pte2);
   }
@@ -235,10 +253,13 @@ static sv39_pte *ensure_page_2m (page_table_t table, u64 va) {
   return &subtable->entries[sv_va.vpn1];
 }
 
-int set_page_2m (page_table_t table, u64 va, u64 pa, u32 flags) {
-  sv39_pa sv_pa = { .value = pa };
+int set_page_2m_user (page_table_t table, void __user *va, void __phy *pa, u32 flags) {
+  return set_page_2m(table, (void *) va, pa, flags | PTE_USER);
+}
+int set_page_2m (page_table_t table, void __mm *va, void __phy *pa, u32 flags) {
+  sv39_pa sv_pa = { .ptr = pa };
   if (sv_pa.off != 0 || (sv_pa.ppn0 != 0 && pte_is_leaf(flags))) {
-    panic("set_page_2m: misaligned superpage pa");
+    panic("misaligned superpage pa");
   }
 
   sv39_pte *pte1 = ensure_page_2m(table, va);
@@ -249,22 +270,25 @@ int set_page_2m (page_table_t table, u64 va, u64 pa, u32 flags) {
   return 0;
 }
 
-int set_page (page_table_t table, u64 va, u64 pa, u32 flags) {
-  sv39_va sv_va = { .value = va };
-  sv39_pa sv_pa = { .value = pa };
+int set_page_user (page_table_t table, void __user *va, void __phy *pa, u32 flags) {
+  return set_page(table, (void *) va, pa, flags | PTE_USER);
+}
+int set_page (page_table_t table, void __mm *va, void __phy *pa, u32 flags) {
+  sv39_va sv_va = { .ptr = va };
+  sv39_pa sv_pa = { .ptr = pa };
   if (sv_va.off != 0 || sv_pa.off != 0) {
-    panic("set_page: misaligned page");
+    panic("misaligned page");
   }
 
   page_table_t subtable;
   sv39_va subtable_va = sv_va;
   subtable_va.vpn0 = 0;
-  sv39_pte *pte1 = ensure_page_2m(table, subtable_va.value);
+  sv39_pte *pte1 = ensure_page_2m(table, subtable_va.ptr);
   if (pte1 == NULL) return -ENOMEM;
   if (pte_invalid_or_leaf(*pte1)) {
-    subtable = expand_superpage(table, *pte1, 0);
+    subtable = expand_superpage(*pte1, 0);
     if (subtable == NULL) return -ENOMEM;
-    set_page_2m(table, subtable_va.value, PA((u64) subtable), PTE_VALID);
+    set_page_2m(table, subtable_va.ptr, PA(subtable), PTE_VALID);
   } else {
     subtable = subtable_from_pte(*pte1);
   }
@@ -276,7 +300,7 @@ int set_page (page_table_t table, u64 va, u64 pa, u32 flags) {
   return 0;
 }
 
-int unset_page (page_table_t table, u64 va) {
+int unset_page (page_table_t table, void __mm *va) {
   sv39_va sv_va = check_va(va);
 
   sv39_pte pte2 = table->entries[sv_va.vpn2];
@@ -293,7 +317,7 @@ int unset_page (page_table_t table, u64 va) {
   return 0;
 }
 
-int unset_page_2m (page_table_t table, u64 va) {
+int unset_page_2m (page_table_t table, void __mm *va) {
   sv39_va sv_va = check_va_2m(va);
 
   sv39_pte pte2 = table->entries[sv_va.vpn2];
@@ -307,7 +331,7 @@ int unset_page_2m (page_table_t table, u64 va) {
   return 0;
 }
 
-int unset_page_1g (page_table_t table, u64 va) {
+int unset_page_1g (page_table_t table, void __mm *va) {
   sv39_va sv_va = check_va_1g(va);
 
   sv39_pte *pte = &table->entries[sv_va.vpn1];
@@ -332,8 +356,8 @@ static void do_destroy_page_table (page_table_t table, int depth) {
   for (int i = 0; i < 1 << 9; ++i) {
     sv39_pte pte = table->entries[i];
     if (!pte_invalid_or_leaf(pte)) {
-      if (depth == 1) {
-        panic("destroy_page_table: invalid page table - too deep");
+      if (depth == 0) {
+        panic("invalid page table - too deep");
       }
       do_destroy_page_table(subtable_from_pte(pte), depth - 1);
     }
@@ -346,4 +370,33 @@ static void do_destroy_page_table (page_table_t table, int depth) {
 
 void destroy_page_table (page_table_t table) {
   do_destroy_page_table(table, 2);
+}
+
+static int user_memcpy (u8 *dest, u8 *src, size_t n) {
+  int ret = 0;
+  if (ksetjmp(&page_fault_handler)) {
+    ret = -EFAULT;
+    goto cleanup;
+  }
+
+  may_page_fault = true;
+  csrns("sstatus", status, sum);
+  for (size_t i = 0; i < n; ++i) {
+    dest[i] = src[i];
+  }
+
+  cleanup:
+  csrnc("sstatus", status, sum);
+  may_page_fault = false;
+  return ret;
+}
+
+int copy_from_user (void *dest, void __user *src, size_t n) {
+  if (!access_ok(src, n)) return -EFAULT;
+  return user_memcpy(dest, (u8 *) src, n);
+}
+
+int copy_to_user (void __user *dest, void *src, size_t n) {
+  if (!access_ok(dest, n)) return -EFAULT;
+  return user_memcpy((u8 *) dest, src, n);
 }

@@ -12,6 +12,20 @@ int fact (int x) {
 }
 
 void _start () {
+  putchar('f'); putchar('o'); putchar('r'); putchar('k'); putchar(':'); putchar(' ');
+  putint(internal_syscall0(4));
+  putchar('\n');
+  putchar('p'); putchar('i'); putchar('d'); putchar(':'); putchar(' ');
+  putint(internal_syscall0(2));
+  putchar('\n');
+  internal_syscall0(114514);
+  if (internal_syscall0(2) == 1) {
+    internal_syscall0(6);
+    while (1) internal_syscall0(3);
+  } else {
+    internal_syscall0(5);
+  }
+  int x = *(int *)0x114514;
   while (true) {
     putint(internal_syscall0(2));
     // internal_syscall0(3);

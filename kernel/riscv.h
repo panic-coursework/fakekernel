@@ -70,7 +70,7 @@ struct cause {
 };
 
 #define csrr(name)        \
-  ({                      \
+  __extension__ ({        \
     u64 _csr_value;       \
     __asm__ volatile (    \
       "csrr %0, " name    \
@@ -80,14 +80,38 @@ struct cause {
   })
 
 #define csrw(name, var) \
-  __asm__(              \
+  __asm__ volatile (    \
     "csrw " name ", %0" \
     : : "r" (var)       \
   )
 
+#define csrs(name, value) \
+  __asm__ volatile (      \
+    "csrs " name ", %0"   \
+    : : "r" (value)       \
+  )
+
+#define csrns(name, type, field) do {        \
+  struct type __csrs_value = { .value = 0 }; \
+  __csrs_value.field = 1;                    \
+  csrs(name, __csrs_value);                  \
+} while(0)
+
+#define csrc(name, value) \
+  __asm__ volatile (      \
+    "csrc " name ", %0"   \
+    : : "r" (value)       \
+  )
+
+#define csrnc(name, type, field) do {        \
+  struct type __csrc_value = { .value = 0 }; \
+  __csrc_value.field = 1;                    \
+  csrc(name, __csrc_value);                  \
+} while(0)
+
 static inline struct status read_sstatus () {
   return (struct status) { .value = csrr("sstatus") };
-};
+}
 
 static inline void write_sstatus (struct status status) {
   csrw("sstatus", status.value);
@@ -111,7 +135,7 @@ static inline void write_sip (struct interrupt_bitmap sip) {
 }
 
 static inline void enable_interrupts () {
-  __asm__ volatile("csrs sstatus, %0" : : "r"(0b10));
+  csrns("sstatus", status, sie);
 }
 
 
