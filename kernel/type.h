@@ -16,11 +16,12 @@ typedef uint64_t u64;
 
 _Static_assert(sizeof(i64) == 8, "Size of i64 is not 8");
 
-typedef u64 size_t;
+typedef i64 size_t;
 typedef u64 pid_t;
 
 #define let __auto_type
 #define __noreturn __attribute__((noreturn))
+#define __noinline __attribute__((noinline))
 
 #ifdef __clang__
 #define __mm __attribute__((noderef))
@@ -31,3 +32,7 @@ typedef u64 pid_t;
 #define __phy
 #define __user
 #endif
+
+#define ERR_PTR(err) ((void *) -(err))
+#define IS_ERR(ptr) ((i64) (ptr) < 0)
+#define PTR_ERR(ptr) ((u64) (ptr))

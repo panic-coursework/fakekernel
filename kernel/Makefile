@@ -10,8 +10,7 @@ CFLAGS += -Wall -Wextra -Wpedantic
 CFLAGS += -O2
 CFLAGS += -fno-omit-frame-pointer -ggdb -gdwarf-2
 CFLAGS += -MD
-CFLAGS += -mcmodel=medany -ffreestanding -fno-common -nostdlib -mno-relax
-CFLAGS += -fno-stack-protector
+CFLAGS += -mcmodel=medany -ffreestanding -fno-common -nostdlib -mno-relax -fno-stack-protector
 
 SRCS = $(shell find . -name '*.c' -or -name '*.s' -or -name '*.S')
 OBJS_C = $(SRCS:.c=.o)

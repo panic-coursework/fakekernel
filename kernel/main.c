@@ -25,10 +25,9 @@ __noreturn void main () { // NOLINT
   init();
 
 } // barrier for optimizations
-__attribute__((noreturn, noinline)) static void init () {
-
+__noreturn __noinline static void init () {
   early = false;
-  uart_base += MMIOBASE;
+  printk("After mret, kernel is at %p\n", init);
 
   mm_init();
   irq_init();
@@ -36,8 +35,9 @@ __attribute__((noreturn, noinline)) static void init () {
 
   elf program = (elf) VA((void __phy *) 0x800f0000L);
   struct task *task = task_create(NULL);
-  load_elf(task, program);
-  task->user_frame.pc = program->e_entry;
+  const char *argv[] = {"init", 0};
+  const char *envp[] = {0};
+  task_init(task, program, (u8 **) argv, (u8 **) envp);
 
   kernel_initialized = true;
 

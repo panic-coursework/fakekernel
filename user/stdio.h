@@ -49,6 +49,10 @@ static inline int getint () {
   return i * sign;
 }
 
+static inline void putstr (const char *s) {
+  while (*s) putchar(*s++);
+}
+
 static inline void yield () {
   internal_syscall0(3);
 }

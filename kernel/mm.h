@@ -47,11 +47,19 @@ static inline int unset_page_1g_user (page_table_t table, void __user *va) {
 #define TASK_SIZE_MAX (128*1024*1024)
 
 static inline bool access_ok (void __user *addr, size_t size) {
-  return size <= TASK_SIZE_MAX && (u64) addr <= SPLIT - size;
+  return size <= TASK_SIZE_MAX && (u64) addr <= (u64) SPLIT - size;
+}
+
+static inline void clear_page (void *page) {
+  u64 *buf = page;
+  for (u64 i = 0; i < PAGE_SIZE / sizeof(u64); ++i) {
+    buf[i] = 0;
+  }
 }
 
 int copy_from_user (void *dest, void __user *src, size_t n);
 int copy_to_user (void __user *dest, void *src, size_t n);
+size_t user_strlcpy (u8 *dest, u8 __user *src, size_t n);
 
 static inline void __phy *PA (void __mm *ptr) {
   if (early) return (void __phy *) ptr;
@@ -61,3 +69,6 @@ static inline void __phy *PA (void __mm *ptr) {
 static inline void *VA (void __phy *ptr) {
   return (void *) _VA((u64) ptr);
 }
+
+#define ARG_MAX (PAGE_SIZE - 16)
+u8 **user_copy_args (u8 * __user *args);

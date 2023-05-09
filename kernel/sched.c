@@ -67,6 +67,7 @@ static void task_entry (struct task *task) {
                 // TODO
                 panic("stack autoexpand: out of memory");
               }
+              clear_page(page);
               if (vm_area_add_page(area, page)) {
                 panic("stack autoexpand: vm_area_add_page");
               }
@@ -134,6 +135,10 @@ struct task *task_clone (struct task *parent) {
 
   task->user_frame = parent->user_frame;
   return task;
+}
+
+void task_destroy_resources (struct task *task) {
+  ;
 }
 
 void task_destroy (struct task *task) {

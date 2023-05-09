@@ -91,6 +91,8 @@ struct cause {
     : : "r" (value)       \
   )
 
+// csr named set
+// example: csrns("sstatus", status, sie)
 #define csrns(name, type, field) do {        \
   struct type __csrs_value = { .value = 0 }; \
   __csrs_value.field = 1;                    \
@@ -103,6 +105,7 @@ struct cause {
     : : "r" (value)       \
   )
 
+// csr named clear
 #define csrnc(name, type, field) do {        \
   struct type __csrc_value = { .value = 0 }; \
   __csrc_value.field = 1;                    \

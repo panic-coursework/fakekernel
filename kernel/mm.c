@@ -7,6 +7,7 @@
 #include "panic.h"
 #include "printf.h"
 #include "riscv.h"
+#include "string.h"
 #include "type.h"
 #include "trap.h"
 
@@ -372,23 +373,30 @@ void destroy_page_table (page_table_t table) {
   do_destroy_page_table(table, 2);
 }
 
-static int user_memcpy (u8 *dest, u8 *src, size_t n) {
-  int ret = 0;
-  if (ksetjmp(&page_fault_handler)) {
-    ret = -EFAULT;
-    goto cleanup;
-  }
-
+static void enter_sum () {
   may_page_fault = true;
   csrns("sstatus", status, sum);
+}
+static void exit_sum () {
+  may_page_fault = false;
+  csrnc("sstatus", status, sum);
+}
+
+static int user_memcpy (u8 *dest, u8 *src, size_t n) {
+  int retval = 0;
+  if (ksetjmp(&page_fault_handler)) {
+    retval = -EFAULT;
+    goto cleanup;
+  }
+  enter_sum();
+
   for (size_t i = 0; i < n; ++i) {
     dest[i] = src[i];
   }
 
   cleanup:
-  csrnc("sstatus", status, sum);
-  may_page_fault = false;
-  return ret;
+  exit_sum();
+  return retval;
 }
 
 int copy_from_user (void *dest, void __user *src, size_t n) {
@@ -399,4 +407,64 @@ int copy_from_user (void *dest, void __user *src, size_t n) {
 int copy_to_user (void __user *dest, void *src, size_t n) {
   if (!access_ok(dest, n)) return -EFAULT;
   return user_memcpy((u8 *) dest, src, n);
+}
+
+size_t user_strlcpy (u8 *dest, u8 __user *src, size_t n) {
+  kassert(n > 0, "user_strlcpy: bad n");
+  if (!access_ok(src, n)) return -EFAULT;
+  size_t retval = 0;
+  if (ksetjmp(&page_fault_handler)) {
+    retval = -EFAULT;
+    goto cleanup;
+  }
+  enter_sum();
+  retval = strlcpy(dest, (u8 *) src, n);
+
+  cleanup:
+  exit_sum();
+  return retval;
+}
+
+u8 **user_copy_args (u8 * __user *args) {
+  if (!access_ok(args, sizeof(void *))) {
+    return ERR_PTR(EFAULT);
+  }
+  void *buf = kmalloc(ARG_MAX);
+  if (!buf) {
+    return ERR_PTR(ENOMEM);
+  }
+  u8 **retval = buf;
+
+  if (ksetjmp(&page_fault_handler)) {
+    retval = ERR_PTR(EFAULT);
+    goto cleanup;
+  }
+  enter_sum();
+
+  i64 argc;
+  let args_ok = (u8 **) args;
+  for (argc = 0; args_ok[argc]; ++argc);
+  i64 arg_size = (argc + 1) * sizeof(void *);
+  i64 off = arg_size;
+  if (arg_size > ARG_MAX) {
+    return ERR_PTR(E2BIG);
+  }
+
+  for (i64 i = 0; i < argc; ++i) {
+    let addr = ((u8 *) buf) + off;
+    retval[i] = addr;
+    size_t length = strlcpy(addr, args_ok[i], ARG_MAX - off);
+    if (length >= ARG_MAX - off) {
+      retval = ERR_PTR(E2BIG);
+      goto cleanup;
+    }
+    off += length + 1;
+  }
+  retval[argc] = NULL;
+
+  goto ok;
+
+  cleanup: kfree(buf);
+  ok: exit_sum();
+  return retval;
 }

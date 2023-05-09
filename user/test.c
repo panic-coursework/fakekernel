@@ -11,18 +11,36 @@ int fact (int x) {
   return t;
 }
 
-void _start () {
-  putchar('f'); putchar('o'); putchar('r'); putchar('k'); putchar(':'); putchar(' ');
-  putint(internal_syscall0(4));
+void _start (int argc, char **argv, char **envp) {
+  putstr("argc: ");
+  putint(argc);
   putchar('\n');
-  putchar('p'); putchar('i'); putchar('d'); putchar(':'); putchar(' ');
+  for (int i = 0; i < argc; ++i) {
+    putstr("argv");
+    putint(i);
+    putstr(": ");
+    putstr(argv[i]);
+    putchar('\n');
+  }
+  int fork_pid = internal_syscall0(4);
+  putstr("pid: ");
   putint(internal_syscall0(2));
   putchar('\n');
-  internal_syscall0(114514);
+  putstr("fork: ");
+  putint(fork_pid);
+  putchar('\n');
   if (internal_syscall0(2) == 1) {
-    internal_syscall0(6);
+    if (argv[0][0] == 'i') {
+      const char *argv[] = {"/test", "22", "33", 0};
+      const char *envp[] = {0};
+      putstr("execve: ");
+      putint(internal_syscall3(6, 0, argv, envp));
+      putchar('\n');
+    }
+    putchar('\n');
     while (1) internal_syscall0(3);
   } else {
+    putchar('\n');
     internal_syscall0(5);
   }
   int x = *(int *)0x114514;

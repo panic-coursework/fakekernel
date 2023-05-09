@@ -4,8 +4,10 @@
 #include "memlayout.h"
 #include "mm.h"
 #include "mmdefs.h"
+#include "panic.h"
 #include "printf.h"
 #include "riscv.h"
+#include "string.h"
 #include "vm.h"
 
 int load_elf (struct task *task, elf program) {
@@ -102,6 +104,7 @@ int load_elf (struct task *task, elf program) {
   if (stack_page == NULL) {
     panic("out of memory");
   }
+  clear_page(stack_page);
 
   let stack_begin = (void __user *) (USERSTACK - PAGE_SIZE);
   struct vm_area *area = vm_area_create(stack_begin, 1, stack_vm_flags);
@@ -116,6 +119,62 @@ int load_elf (struct task *task, elf program) {
     task->user_frame.registers[i] = 0;
   }
   task->user_frame.registers[REG_SP] = USERSTACK;
+  task->user_frame.pc = program->e_entry;
+
+  return 0;
+}
+
+static void __user *user_stack_addr (u64 off) {
+  return (void __user *) (USERSTACK - off);
+}
+
+int task_init (struct task *task, elf program, u8 **argv, u8 **envp) {
+  kassert(argv && envp, "task_init with NULL argv or envp");
+  kassert(program, "task_init with NULL program");
+
+  int retval = load_elf(task, program);
+  if (retval) return retval;
+  u64 arg_size = 0;
+  u64 argc, envc;
+  for (argc = 0; argv[argc]; ++argc) {
+    arg_size += strlen(argv[argc]) + 1;
+  }
+  for (envc = 0; envp[envc]; ++envc) {
+    arg_size += strlen(envp[envc]) + 1;
+  }
+  arg_size += (argc + envc + 2) * sizeof(void *);
+  if (arg_size > PAGE_SIZE) {
+    panic("argv too big");
+    return -E2BIG;
+  }
+
+  // FIXME: how to get the address of the stack page?
+  struct vm_area *area = task->vm_areas.last->value;
+  kassert(area->flags & VM_STACK, "fixme");
+  kassert(area->n_pages == 1, "fixme");
+  kassert(area->pages.first == area->pages.last && area->pages.first, "fixme");
+  u8 *stack = (u8 *) area->pages.first->value + PAGE_SIZE;
+
+  u64 off = arg_size;
+  u64 argv_off = (argc + envc + 2) * sizeof(void *);
+  u64 envp_off = (envc + 2) * sizeof(void *);
+  for (u64 i = 0; i < argc; ++i) {
+    *(u8 * __user **) (stack - argv_off + i * sizeof(void *)) =
+      user_stack_addr(off);
+    off -= strlcpy(stack - off, argv[i], off) + 1;
+  }
+  for (u64 i = 0; i < envc; ++i) {
+    *(u8 * __user **) (stack - envp_off + i * sizeof(void *)) =
+      user_stack_addr(off);
+    off -= strlcpy(stack - off, envp[i], off) + 1;
+  }
+  kassert(off == argv_off, "stack size mismatch");
+
+  task->user_frame.registers[REG_A0] = argc;
+  task->user_frame.registers[REG_A1] = (u64) user_stack_addr(argv_off);
+  task->user_frame.registers[REG_A2] = (u64) user_stack_addr(envp_off);
+  u64 aligned_off = (arg_size + 15) / 16 * 16;
+  task->user_frame.registers[REG_SP] = USERSTACK - aligned_off;
 
   return 0;
 }
