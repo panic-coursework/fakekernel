@@ -2,7 +2,9 @@
 
 #include "elf.h"
 #include "errno.h"
+#include "irq.h"
 #include "mm.h"
+#include "mmdefs.h"
 #include "printf.h"
 #include "riscv.h"
 #include "sched.h"
@@ -39,8 +41,8 @@ u64 syscall (struct task *task) {
 
   case SYS_fork: {
     let task = task_clone(current_task);
-    if (!task) {
-      return -EAGAIN;
+    if (IS_ERR(task)) {
+      return PTR_ERR(task);
     }
     task->user_frame.registers[REG_A0] = 0;
     return task->pid;
@@ -51,30 +53,43 @@ u64 syscall (struct task *task) {
     schedule();
 
   case SYS_execve: {
+    u64 retval;
+
     // TODO
     elf program = (elf) VA((void __phy *) 0x800f0000L);
-
-    u64 retval;
-    // TODO: FIXME: currently this is the semantics of posix_spawn
-    struct task *task = task_create(current_task);
-    if (!task) return -ENOMEM;
 
     u8 **argv = user_copy_args((u8 * __user *) a1);
     if (IS_ERR(argv)) {
       retval = PTR_ERR(argv);
-      goto err_execve_argv;
+      goto err_execve;
     }
     u8 **envp = user_copy_args((u8 * __user *) a2);
     if (IS_ERR(argv)) {
       retval = PTR_ERR(argv);
-      goto err_execve_envp;
+      goto err_execve_argv;
     }
-    task_init(task, program, argv, envp);
-    return 0;
 
-    err_execve_envp: kfree(argv);
-    err_execve_argv: task_destroy(task);
-    return retval;
+    // switch to backup stack & PT here, as we are going to free the current.
+    __asm__ volatile ("mv sp, %0" : : "r"(trapframe.kernel_sp) : "memory");
+    switch_to_early_pt();
+
+    retval = task_reinit(current_task);
+    if (retval) goto err_execve_task;
+
+    retval = task_init(task, program, argv, envp);
+    if (retval) goto err_execve_task;
+
+    // not "return 0" here, as exec creates a new kernel thread.
+    schedule();
+
+    err_execve_task:
+    kfree(argv);
+    kfree(envp);
+    task_destroy(current_task);
+    panic("unreachable");
+
+    err_execve_argv: kfree(argv);
+    err_execve: return retval;
   }
 
   case 114514:

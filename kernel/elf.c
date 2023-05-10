@@ -134,6 +134,7 @@ int task_init (struct task *task, elf program, u8 **argv, u8 **envp) {
 
   int retval = load_elf(task, program);
   if (retval) return retval;
+
   u64 arg_size = 0;
   u64 argc, envc;
   for (argc = 0; argv[argc]; ++argc) {

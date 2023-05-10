@@ -90,20 +90,10 @@ static void task_entry (struct task *task) {
   task_destroy(task);
 }
 
-struct task *task_create (struct task *parent) {
-  struct task *task = kmalloc(sizeof(struct task));
-  if (task == NULL) return NULL;
-  struct list_node *node = list_node_create(task);
-  if (node == NULL) goto cleanup_task;
+static int task_alloc_resources (struct task *task) {
   void *stack = alloc_pages(0).address;
-#ifdef DEBUG_KERN_STACK
-  printk("stack for %d is at %p\n", next_task_id, stack);
-#endif
-  if (stack == NULL) goto cleanup_node;
+  if (stack == NULL) return -ENOMEM;
 
-  task->sched = node;
-  task->pid = next_task_id++;
-  task->parent = parent;
   list_init(&task->vm_areas);
   task->page_table = create_page_table();
   if (task->page_table == NULL) goto cleanup_stack;
@@ -113,32 +103,72 @@ struct task *task_create (struct task *parent) {
   task->kernel_frame.registers[REG_A0] = (u64) task;
   task->kernel_frame.pc = (u64) task_entry;
 
+  struct list_node *node = list_node_create(task);
+  if (!node) goto cleanup_page_table;
+  task->sched = node;
   list_push(&tasks, node);
+
+  return 0;
+
+  cleanup_page_table: destroy_page_table(task->page_table);
+  cleanup_stack: free_pages((struct page) { .address = stack, .order = 0 });
+  return -ENOMEM;
+}
+
+struct task *task_create (struct task *parent) {
+  struct task *task = kmalloc(sizeof(struct task));
+  struct task *retval = task;
+  if (task == NULL) {
+    return ERR_PTR(ENOMEM);
+  }
+#ifdef DEBUG_KERN_STACK
+  printk("stack for %d is at %p\n", next_task_id, stack);
+#endif
+
+  task->pid = next_task_id++;
+  task->parent = parent;
+  int ret = task_alloc_resources(task);
+  if (ret) {
+    retval = ERR_PTR(-ret);
+    goto cleanup_task;
+  }
 
   return task;
 
-  cleanup_stack: free_pages((struct page) { .address = stack, .order = 0 });
-  cleanup_node: kfree(node);
   cleanup_task: kfree(task);
-  return NULL;
+  return retval;
 }
 
 struct task *task_clone (struct task *parent) {
   struct task *task = task_create(parent);
-  if (!task) return NULL;
+  if (IS_ERR(task)) return task;
 
   int err = vm_clone(&parent->vm_areas, task);
   if (err) {
     task_destroy(task);
-    return NULL;
+    return ERR_PTR(-err);
   }
 
   task->user_frame = parent->user_frame;
   return task;
 }
 
-void task_destroy_resources (struct task *task) {
-  ;
+static void task_destroy_resources (struct task *task) {
+  destroy_page_table(task->page_table);
+  vm_decref_all(&task->vm_areas);
+  list_remove(task->sched);
+  kfree(task->sched);
+  free_pages((struct page) { .address = task->kernel_stack, .order = 0 });
+}
+
+int task_reinit (struct task *task) {
+  bool is_current = current_task == task;
+  if (is_current) {
+    current_task = NULL;
+    current_task_node = NULL;
+  }
+  task_destroy_resources(task);
+  return task_alloc_resources(task);
 }
 
 void task_destroy (struct task *task) {
@@ -146,11 +176,7 @@ void task_destroy (struct task *task) {
     panic("attempting to kill init");
   }
 
-  destroy_page_table(task->page_table);
-  vm_decref_all(&task->vm_areas);
-  list_remove(task->sched);
-  free_pages((struct page) { .address = task->kernel_stack, .order = 0 });
-  kfree(task->sched);
+  task_destroy_resources(task);
   kfree(task);
 
   if (task == current_task) {
@@ -174,9 +200,10 @@ __noreturn static void do_schedule () {
   printk("[debug sched] next task: %d\n", task->pid);
 #endif
 
-  if ((u64) current_task->page_table != csrr("satp")) {
+  let satp = satp_from_table(current_task->page_table);
+  if (satp.value != csrr("satp")) {
     __asm__ volatile("sfence.vma x0, x0");
-    csrw("satp", satp_from_table(current_task->page_table));
+    csrw("satp", satp);
     __asm__ volatile("sfence.vma x0, x0");
   }
 

@@ -33,6 +33,6 @@ typedef u64 pid_t;
 #define __user
 #endif
 
-#define ERR_PTR(err) ((void *) -(err))
+#define ERR_PTR(err) ((void *) -(u64) (err))
 #define IS_ERR(ptr) ((i64) (ptr) < 0)
 #define PTR_ERR(ptr) ((u64) (ptr))

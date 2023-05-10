@@ -40,6 +40,11 @@ void establish_identical_mapping () {
   __asm__ volatile("sfence.vma x0, x0");
 }
 
+void switch_to_early_pt () {
+  csrw("satp", satp_from_table(early_page_table));
+  __asm__ volatile("sfence.vma x0, x0");
+}
+
 static void *buddy_pages[MAX_ORDER];
 
 static void split_area (u32 order) {

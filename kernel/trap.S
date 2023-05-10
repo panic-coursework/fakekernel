@@ -132,7 +132,6 @@ trap_vector:
 	csrr	t1, sepc
 	sd	t1, 256(t0)
 
-	ld	t1, 272(t0)
 	ld	sp, 264(t0)
 	j	trap_handler
 

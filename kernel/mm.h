@@ -5,6 +5,7 @@
 #include "type.h"
 
 void establish_identical_mapping ();
+void switch_to_early_pt ();
 
 struct page {
   void *address;

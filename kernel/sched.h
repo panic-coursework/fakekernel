@@ -31,6 +31,7 @@ extern struct task *current_task;
 struct task *task_create (struct task *parent);
 struct task *task_clone (struct task *parent);
 void task_destroy (struct task *task);
+int task_reinit (struct task *task);
 
 __noreturn void schedule ();
 __noreturn void schedule_next ();
