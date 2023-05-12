@@ -17,8 +17,14 @@ OBJS_C = $(SRCS:.c=.o)
 OBJS_S = $(OBJS_C:.s=.o)
 OBJS = $(OBJS_S:.S=.o)
 
+all: kernel kernel.dump
+	
 kernel: $(OBJS) kernel.ld
-	$(LD) $(LDFLAGS) -T kernel.ld -o kernel $(OBJS) 
+	$(LD) $(LDFLAGS) -T kernel.ld -o $@ $(OBJS) 
+kernel.sym: $(OBJS) kernel.sym.ld
+	$(LD) $(LDFLAGS) -T kernel.sym.ld -o $@ $(OBJS) 
+kernel.sym.ld: kernel.ld
+	sed 's/0x8/0x3f0/' < $< > $@
 
 CPUS = 1
 QEMU = qemu-system-riscv64
@@ -28,23 +34,22 @@ QEMUOPTS += -device loader,file=../user/test,force-raw=on,addr=0x800f0000
 QEMUOPTS_RECORD = -icount shift=auto,rr=record,rrfile=replay.bin,rrsnapshot=init -net none -drive file=empty.qcow2,if=none,id=rr
 QEMUOPTS_REPLAY = -icount shift=auto,rr=replay,rrfile=replay.bin,rrsnapshot=init -net none -drive file=empty.qcow2,if=none,id=rr
 
-qemu: kernel.dump
+qemu: kernel
 	$(QEMU) $(QEMUOPTS)
-qemugdb: kernel.dump
+qemugdb: kernel
 	$(QEMU) $(QEMUOPTS) -s -S
-qemurr : kernel.dump
+qemurr : kernel
 	$(QEMU) $(QEMUOPTS) $(QEMUOPTS_RECORD)
-qemureplay : kernel.dump replay.bin
+qemureplay : kernel replay.bin
 	$(QEMU) $(QEMUOPTS) $(QEMUOPTS_REPLAY) -s -S
 
-kernel.dump: kernel
+kernel.dump: kernel.sym
 	$(OBJDUMP) -S -D $< > $@
 %.dump: %.o
 	$(OBJDUMP) -D $< > $@
 
 .PHONY: all clean
 
-all: kernel.dump
 clean:
 	rm -f kernel kernel.dump $(OBJS) *.dump *.d
 
