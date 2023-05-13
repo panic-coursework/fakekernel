@@ -128,9 +128,9 @@ static void __user *user_stack_addr (u64 off) {
   return (void __user *) (USERSTACK - off);
 }
 
-int task_init (struct task *task, elf program, u8 **argv, u8 **envp) {
-  kassert(argv && envp, "task_init with NULL argv or envp");
-  kassert(program, "task_init with NULL program");
+int task_init_elf (struct task *task, elf program, u8 **argv, u8 **envp) {
+  kassert(argv && envp, "task_init_elf with NULL argv or envp");
+  kassert(program, "task_init_elf with NULL program");
 
   int retval = load_elf(task, program);
   if (retval) return retval;

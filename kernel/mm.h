@@ -24,6 +24,7 @@ typedef struct page_table *page_table_t;
 
 page_table_t create_page_table ();
 void destroy_page_table (page_table_t table);
+void unset_user_pages (page_table_t table);
 
 int set_page (page_table_t table, void __mm *va, void __phy *pa, u32 flags);
 int set_page_2m (page_table_t table, void __mm *va, void __phy *pa, u32 flags);

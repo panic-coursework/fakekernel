@@ -90,29 +90,19 @@ static void task_entry (struct task *task) {
   task_destroy(task);
 }
 
-static int task_alloc_resources (struct task *task) {
-  void *stack = alloc_pages(0).address;
-  if (stack == NULL) return -ENOMEM;
-
+static int task_init_sched (struct task *task) {
   list_init(&task->vm_areas);
-  task->page_table = create_page_table();
-  if (task->page_table == NULL) goto cleanup_stack;
   task->mode = MODE_SUPERVISOR;
-  task->kernel_stack = stack;
-  task->kernel_frame.registers[REG_SP] = (u64) stack + PAGE_SIZE;
+  task->kernel_frame.registers[REG_SP] = (u64) task->kernel_stack + PAGE_SIZE;
   task->kernel_frame.registers[REG_A0] = (u64) task;
   task->kernel_frame.pc = (u64) task_entry;
 
   struct list_node *node = list_node_create(task);
-  if (!node) goto cleanup_page_table;
+  if (!node) return -ENOMEM;
   task->sched = node;
   list_push(&tasks, node);
 
   return 0;
-
-  cleanup_page_table: destroy_page_table(task->page_table);
-  cleanup_stack: free_pages((struct page) { .address = stack, .order = 0 });
-  return -ENOMEM;
 }
 
 struct task *task_create (struct task *parent) {
@@ -127,14 +117,24 @@ struct task *task_create (struct task *parent) {
 
   task->pid = next_task_id++;
   task->parent = parent;
-  int ret = task_alloc_resources(task);
+
+  void *stack = alloc_pages(0).address;
+  if (stack == NULL) goto cleanup_task;
+  task->kernel_stack = stack;
+
+  task->page_table = create_page_table();
+  if (task->page_table == NULL) goto cleanup_stack;
+
+  int ret = task_init_sched(task);
   if (ret) {
     retval = ERR_PTR(-ret);
-    goto cleanup_task;
+    goto cleanup_page_table;
   }
 
   return task;
 
+  cleanup_page_table: destroy_page_table(task->page_table);
+  cleanup_stack: free_pages((struct page) { .address = stack, .order = 0 });
   cleanup_task: kfree(task);
   return retval;
 }
@@ -153,22 +153,16 @@ struct task *task_clone (struct task *parent) {
   return task;
 }
 
-static void task_destroy_resources (struct task *task) {
-  destroy_page_table(task->page_table);
+static void task_destroy_sched (struct task *task) {
   vm_decref_all(&task->vm_areas);
   list_remove(task->sched);
   kfree(task->sched);
-  free_pages((struct page) { .address = task->kernel_stack, .order = 0 });
 }
 
 int task_reinit (struct task *task) {
-  bool is_current = current_task == task;
-  if (is_current) {
-    current_task = NULL;
-    current_task_node = NULL;
-  }
-  task_destroy_resources(task);
-  return task_alloc_resources(task);
+  task_destroy_sched(task);
+  unset_user_pages(task->page_table);
+  return task_init_sched(task);
 }
 
 void task_destroy (struct task *task) {
@@ -176,7 +170,9 @@ void task_destroy (struct task *task) {
     panic("attempting to kill init");
   }
 
-  task_destroy_resources(task);
+  task_destroy_sched(task);
+  destroy_page_table(task->page_table);
+  free_pages((struct page) { .address = task->kernel_stack, .order = 0 });
   kfree(task);
 
   if (task == current_task) {

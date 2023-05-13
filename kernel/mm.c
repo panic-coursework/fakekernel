@@ -374,6 +374,19 @@ static void do_destroy_page_table (page_table_t table, int depth) {
   });
 }
 
+void unset_user_pages (page_table_t table) {
+  sv39_va va = { .value = 0 };
+  for (int i = 0; i < 1 << 9; ++i) {
+    va.vpn2 = i;
+    if (va.value >= SPLIT) return;
+    sv39_pte pte = table->entries[i];
+    if (!pte_invalid_or_leaf(pte)) {
+      do_destroy_page_table(subtable_from_pte(pte), 1);
+    }
+    table->entries[i].value = 0;
+  }
+}
+
 void destroy_page_table (page_table_t table) {
   do_destroy_page_table(table, 2);
 }

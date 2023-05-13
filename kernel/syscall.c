@@ -69,18 +69,14 @@ u64 syscall (struct task *task) {
       goto err_execve_argv;
     }
 
-    // switch to backup stack & PT here, as we are going to free the current.
-    __asm__ volatile ("mv sp, %0" : : "r"(trapframe.kernel_sp) : "memory");
-    switch_to_early_pt();
-
     retval = task_reinit(current_task);
     if (retval) goto err_execve_task;
 
-    retval = task_init(task, program, argv, envp);
+    retval = task_init_elf(task, program, argv, envp);
     if (retval) goto err_execve_task;
 
     // not "return 0" here, as exec creates a new kernel thread.
-    schedule();
+    klongjmp(&current_task->kernel_frame);
 
     err_execve_task:
     kfree(argv);
